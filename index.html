@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#111827" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+  <link rel="stylesheet" href="style.css" />
+  <title>TCG Restock Radar</title>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">LIVE-READY PWA</div>
+      <h1>TCG Restock Radar</h1>
+      <p class="sub">Pokémon • One Piece • Magic: The Gathering</p>
+    </div>
+    <button id="installBtn" class="install" hidden>Install App</button>
+  </header>
+
+  <main>
+    <section class="controls card">
+      <div class="control-group">
+        <label>Game</label>
+        <select id="gameFilter">
+          <option value="all">All games</option>
+          <option value="Pokemon">Pokémon</option>
+          <option value="One Piece">One Piece</option>
+          <option value="Magic">Magic: The Gathering</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label>Area</label>
+        <select id="areaFilter">
+          <option value="all">All areas</option>
+          <option value="Morgantown">Morgantown</option>
+          <option value="Martinsburg">Martinsburg</option>
+          <option value="Online">Online</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label>Max markup</label>
+        <select id="markupFilter">
+          <option value="80">≤ 80% over MSRP</option>
+          <option value="40">≤ 40% over MSRP</option>
+          <option value="20">≤ 20% over MSRP</option>
+          <option value="0">MSRP or less</option>
+          <option value="999">Show everything</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label>Search</label>
+        <input id="searchInput" placeholder="ETB, booster, collector..." />
+      </div>
+    </section>
+
+    <section class="summary">
+      <div class="stat card">
+        <span id="resultCount">0</span>
+        <small>matching drops</small>
+      </div>
+      <div class="stat card">
+        <span id="msrpCount">0</span>
+        <small>at/below MSRP</small>
+      </div>
+      <div class="stat card">
+        <span id="updatedAt">—</span>
+        <small>last refresh</small>
+      </div>
+    </section>
+
+    <section class="actions">
+      <button id="refreshBtn">Refresh</button>
+      <button id="notifyBtn" class="secondary">Enable Notifications</button>
+      <button id="settingsBtn" class="secondary">Feed Settings</button>
+    </section>
+
+    <section id="statusBox" class="status card"></section>
+    <section id="results" class="grid"></section>
+  </main>
+
+  <dialog id="settingsDialog">
+    <form method="dialog" class="dialog-card">
+      <h2>Live Feed Settings</h2>
+      <p class="muted">Paste a JSON feed URL when you have a backend/API. Until then, the app uses built-in demo data.</p>
+      <label>Feed URL</label>
+      <input id="feedUrl" placeholder="https://example.com/restocks.json" />
+      <div class="dialog-actions">
+        <button value="cancel" class="secondary">Cancel</button>
+        <button id="saveFeedBtn" value="default">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <template id="itemTemplate">
+    <article class="drop card">
+      <div class="drop-head">
+        <span class="badge game"></span>
+        <span class="badge area"></span>
+      </div>
+      <h3 class="product"></h3>
+      <p class="store"></p>
+      <div class="price-row">
+        <div>
+          <small>Price</small>
+          <strong class="price"></strong>
+        </div>
+        <div>
+          <small>MSRP</small>
+          <strong class="msrp"></strong>
+        </div>
+        <div>
+          <small>Markup</small>
+          <strong class="markup"></strong>
+        </div>
+      </div>
+      <p class="evidence"></p>
+      <a class="buy" target="_blank" rel="noopener">Open Listing</a>
+    </article>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
