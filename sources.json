@@ -1,0 +1,32 @@
+[
+  {
+    "enabled": false,
+    "game": "Pokemon",
+    "area": "Online",
+    "store": "Walmart",
+    "product": "REPLACE WITH EXACT PRODUCT NAME",
+    "url": "REPLACE_WITH_PRODUCT_URL",
+    "msrp": 49.99,
+    "max_markup": 80
+  },
+  {
+    "enabled": false,
+    "game": "One Piece",
+    "area": "Online",
+    "store": "Target",
+    "product": "REPLACE WITH EXACT PRODUCT NAME",
+    "url": "REPLACE_WITH_PRODUCT_URL",
+    "msrp": 24.99,
+    "max_markup": 80
+  },
+  {
+    "enabled": false,
+    "game": "Magic",
+    "area": "Online",
+    "store": "GameStop",
+    "product": "REPLACE WITH EXACT PRODUCT NAME",
+    "url": "REPLACE_WITH_PRODUCT_URL",
+    "msrp": 39.99,
+    "max_markup": 80
+  }
+]
