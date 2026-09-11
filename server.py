@@ -205,15 +205,7 @@ def detect_status(status_code, text):
 
     if status_code >= 500 and len(text) < 1000:
         return "error"
-
-    challenge_words = [
-        "verify you are human",
-        "unusual traffic",
-    ]
-
-    if any(word in page for word in challenge_words):
-        return "blocked"
-
+        
     in_stock_signals = [
         '"availability":"http://schema.org/instock"',
         '"availability":"https://schema.org/instock"',
