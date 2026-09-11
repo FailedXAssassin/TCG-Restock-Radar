@@ -209,7 +209,6 @@ def detect_status(status_code, text):
     challenge_words = [
         "captcha",
         "verify you are human",
-        "access denied",
         "unusual traffic",
     ]
 
