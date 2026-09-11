@@ -1,32 +1,24 @@
 [
   {
-    "enabled": false,
+    "enabled": true,
     "game": "Pokemon",
     "area": "Online",
     "store": "Walmart",
-    "product": "REPLACE WITH EXACT PRODUCT NAME",
-    "url": "REPLACE_WITH_PRODUCT_URL",
+    "product": "Pokemon Scarlet & Violet Prismatic Evolutions Elite Trainer Box",
+    "url": "https://www.walmart.com/ip/13816151308",
     "msrp": 49.99,
-    "max_markup": 80
+    "max_markup": 80,
+    "priority": "high"
   },
   {
-    "enabled": false,
-    "game": "One Piece",
-    "area": "Online",
-    "store": "Target",
-    "product": "REPLACE WITH EXACT PRODUCT NAME",
-    "url": "REPLACE_WITH_PRODUCT_URL",
-    "msrp": 24.99,
-    "max_markup": 80
-  },
-  {
-    "enabled": false,
+    "enabled": true,
     "game": "Magic",
     "area": "Online",
-    "store": "GameStop",
-    "product": "REPLACE WITH EXACT PRODUCT NAME",
-    "url": "REPLACE_WITH_PRODUCT_URL",
-    "msrp": 39.99,
-    "max_markup": 80
+    "store": "Best Buy",
+    "product": "Magic: The Gathering The Hobbit Scene Box",
+    "url": "https://www.bestbuy.com/product/wizards-of-the-coast-magic-the-gathering-the-hobbit-scene-box-1-scene-box-per-order-styles-may-vary/JJ8VP7KQLK/sku/6678102",
+    "msrp": 41.99,
+    "max_markup": 80,
+    "priority": "high"
   }
 ]
