@@ -207,7 +207,6 @@ def detect_status(status_code, text):
         return "error"
 
     challenge_words = [
-        "captcha",
         "verify you are human",
         "unusual traffic",
     ]
