@@ -20,5 +20,16 @@
     "msrp": 41.99,
     "max_markup": 80,
     "priority": "high"
-  }
+  },
+  {
+    "enabled": true,
+    "game": "One Piece",
+    "area": "Online",
+    "store": "Target",
+    "product": "One Piece Card Game: The World's Strongest Warriors Double Pack Set 12",
+    "url": "https://www.target.com/p/-/A-95290385",
+    "msrp": 11.99,
+    "max_markup": 80,
+    "priority": "high"
+    }
 ]
