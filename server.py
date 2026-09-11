@@ -203,7 +203,7 @@ def detect_status(status_code, text):
     if status_code in (403, 429):
         return "blocked"
 
-    if status_code >= 500:
+    if status_code >= 500 and len(text) < 1000:
         return "error"
 
     challenge_words = [
