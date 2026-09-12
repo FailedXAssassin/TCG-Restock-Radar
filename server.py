@@ -163,6 +163,17 @@ def extract_price(text):
 def detect_walmart_offer(text):
     page = text.lower()
 
+        seller_debug = re.findall(
+        r'"(?:sellerdisplayname|sellername)"\s*:\s*"([^"]+)"',
+        text,
+        re.I,
+    )
+
+    print(
+        "WALMART_SELLER_DEBUG:",
+        list(dict.fromkeys(seller_debug))[:10],
+    )
+
     seller_patterns = [
         '"sellerdisplayname":"walmart.com"',
         '"sellerdisplayname": "walmart.com"',
