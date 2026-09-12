@@ -194,7 +194,7 @@ def detect_quantity(text):
     return None
 
 
-def detect_status(status_code, text):
+def detect_status(status_code, text, store=None):
     page = text.lower()
 
     if status_code == 404:
@@ -205,6 +205,27 @@ def detect_status(status_code, text):
 
     if status_code >= 500 and len(text) < 1000:
         return "error"
+
+        # Walmart: generic "add to cart" text can belong to
+    # unrelated marketplace offers, so require stronger signals.
+    if store and store.lower() == "walmart":
+        walmart_in_stock = (
+            '"availability":"http://schema.org/instock"' in page
+            or '"availability":"https://schema.org/instock"' in page
+        )
+
+        walmart_sold_out = (
+            '"availability":"http://schema.org/outofstock"' in page
+            or '"availability":"https://schema.org/outofstock"' in page
+        )
+
+        if walmart_in_stock and not walmart_sold_out:
+            return "in_stock"
+
+        if walmart_sold_out and not walmart_in_stock:
+            return "sold_out"
+
+            return "unknown"
         
     in_stock_signals = [
         '"availability":"http://schema.org/instock"',
@@ -366,6 +387,7 @@ async def check_product(source):
         status = detect_status(
             response.status_code,
             response.text,
+            store,
         )
 
         price = extract_price(
