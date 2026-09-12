@@ -437,7 +437,7 @@ async def check_product(source):
             (time.monotonic() - started) * 1000
         )
 
-                if store.lower() == "walmart":
+        if store.lower() == "walmart":
             walmart_offer = detect_walmart_offer(
                 response.text
             )
