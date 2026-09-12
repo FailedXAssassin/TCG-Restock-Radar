@@ -160,7 +160,60 @@ def extract_price(text):
                 pass
 
     return None
+def detect_walmart_offer(text):
+    page = text.lower()
 
+    seller_patterns = [
+        '"sellerdisplayname":"walmart.com"',
+        '"sellerdisplayname": "walmart.com"',
+        '"sellername":"walmart.com"',
+        '"sellername": "walmart.com"',
+    ]
+
+    for seller_signal in seller_patterns:
+        start = page.find(seller_signal)
+
+        if start == -1:
+            continue
+
+        # Only inspect a nearby chunk of Walmart's public
+        # structured product data instead of the whole page.
+        context = page[
+            max(0, start - 1500):
+            start + 3000
+        ]
+
+        in_stock = (
+            '"availability":"http://schema.org/instock"' in context
+            or '"availability":"https://schema.org/instock"' in context
+            or '"availabilitystatus":"in_stock"' in context
+            or '"availabilitystatus":"instock"' in context
+        )
+
+        sold_out = (
+            '"availability":"http://schema.org/outofstock"' in context
+            or '"availability":"https://schema.org/outofstock"' in context
+            or '"availabilitystatus":"out_of_stock"' in context
+            or '"availabilitystatus":"outofstock"' in context
+        )
+
+        price = extract_price(context)
+
+        if in_stock and not sold_out:
+            return {
+                "seller": "Walmart",
+                "status": "in_stock",
+                "price": price,
+            }
+
+        if sold_out and not in_stock:
+            return {
+                "seller": "Walmart",
+                "status": "sold_out",
+                "price": price,
+            }
+
+    return None
 
 def detect_quantity(text):
     """
@@ -384,15 +437,28 @@ async def check_product(source):
             (time.monotonic() - started) * 1000
         )
 
-        status = detect_status(
-            response.status_code,
-            response.text,
-            store,
-        )
+                if store.lower() == "walmart":
+            walmart_offer = detect_walmart_offer(
+                response.text
+            )
 
-        price = extract_price(
-            response.text
-        )
+            if walmart_offer:
+                status = walmart_offer["status"]
+                price = walmart_offer["price"]
+            else:
+                status = "unknown"
+                price = None
+
+        else:
+            status = detect_status(
+                response.status_code,
+                response.text,
+                store,
+            )
+
+            price = extract_price(
+                response.text
+            )
 
         quantity = detect_quantity(
             response.text
