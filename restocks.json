@@ -1,4 +1,15 @@
 {
-  "generated_at": "2026-09-13T15:03:52.699531+00:00",
-  "items": []
+  "generated_at": "2026-09-13T18:05:58.663196+00:00",
+  "items": [
+    {
+      "game": "Pokemon",
+      "area": "Online",
+      "store": "Walmart",
+      "product": "Pokemon Scarlet & Violet Prismatic Evolutions Elite Trainer Box",
+      "price": 23.99,
+      "msrp": 49.99,
+      "evidence": "Automated check: page appears in stock; checked 2026-09-13 18:05 UTC",
+      "url": "https://www.walmart.com/ip/13816151308"
+    }
+  ]
 }
