@@ -29,6 +29,18 @@
       <div class="hero-pulse"><span></span> Live scan</div>
     </section>
 
+    <section class="radar-snapshot" aria-label="Radar snapshot">
+      <article class="snapshot-card"><span class="snapshot-icon">◉</span><div><small>Confirmed now</small><strong id="confirmedCount">0</strong></div></article>
+      <article class="snapshot-card"><span class="snapshot-icon">⌁</span><div><small>Active trackers</small><strong id="activeCount">0</strong></div></article>
+      <article class="snapshot-card snapshot-highlight"><span class="snapshot-icon">✦</span><div><small>Latest verified</small><strong id="latestVerified">Waiting for a scan</strong></div></article>
+    </section>
+
+    <details id="welcomeGuide" class="welcome-guide card">
+      <summary><span><strong>New here? Start in 30 seconds</strong><small>Three quick steps to make the radar yours</small></span><span class="filter-icon">⌄</span></summary>
+      <div class="guide-steps"><span><b>1</b> Tap <strong>Alerts</strong> to allow notifications.</span><span><b>2</b> Choose your personal price limit in <strong>Alert settings</strong>.</span><span><b>3</b> Use <strong>Filter products</strong> to follow what you collect.</span></div>
+      <button id="dismissGuide" type="button" class="secondary">Got it</button>
+    </details>
+
     <details class="filter-drawer card">
       <summary><span><strong>Filter products</strong><small>Game, retailer, price and availability</small></span><span class="filter-icon">⌄</span></summary>
     <section class="controls">
@@ -202,6 +214,11 @@
   <dialog id="ownerDialog" class="admin-dialog">
     <div class="admin-page">
       <header class="admin-header"><div><div class="eyebrow">TCG RADAR // RESTRICTED</div><h2>Command Center</h2><p>Product operations, community controls, and broadcast tools.</p></div><button id="closeOwnerBtn" class="secondary">Exit admin</button></header>
+      <section id="adminOverview" class="admin-overview" hidden>
+        <div><small>Session</small><strong id="adminRole">Locked</strong></div>
+        <div><small>Tracked products</small><strong id="adminProductCount">0</strong></div>
+        <div><small>Available actions</small><strong id="adminAccess">Unlock to begin</strong></div>
+      </section>
       <div id="managerLogin" class="product-form">
         <div class="admin-lock" aria-hidden="true">⌁</div>
         <h3>Unlock manager controls</h3><p class="muted">Enter your owner or moderator code to continue.</p>
