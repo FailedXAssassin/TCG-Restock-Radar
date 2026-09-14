@@ -8,6 +8,7 @@
   <link rel="icon" href="icon-radar-v2.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="icon-radar-v2.svg" />
   <link rel="stylesheet" href="style.css" />
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <title>TCG Restock Radar</title>
 </head>
 <body>
@@ -112,6 +113,7 @@
       <button id="notifyBtn" class="secondary">Enable Notifications</button>
       <button id="alertSettingsBtn" class="secondary">Alert Settings</button>
       <button id="helpBtn" class="secondary">Help & Chat</button>
+      <button id="purchasesBtn" class="secondary">My Purchases</button>
       <button id="ownerBtn" class="secondary" hidden>Manage Products</button>
     </section>
 
@@ -175,6 +177,16 @@
       <div id="helpMessages" class="help-messages"><small>No messages yet.</small></div>
       <form id="helpForm" class="product-form"><textarea id="helpBody" required maxlength="1000" rows="3" placeholder="What can I help with?"></textarea><button type="submit">Send message</button></form>
       <p id="helpMessage" class="muted"></p>
+    </div>
+  </dialog>
+
+  <dialog id="purchasesDialog">
+    <div class="dialog-card"><div class="dialog-title"><h2>My purchases</h2><button id="closePurchasesBtn" type="button" class="secondary">Close</button></div>
+      <p class="muted">Sign in with Google so your purchases survive a new phone or reinstall. Record what you paid—not an estimated market value.</p>
+      <div id="accountStatus" class="account-status">Checking account setup…</div><div id="googleSignIn"></div><button id="signOutBtn" type="button" class="secondary" hidden>Sign out</button>
+      <div class="purchase-total"><span>Total logged spending</span><strong id="purchaseTotal">$0.00</strong></div>
+      <form id="purchaseForm" class="product-form"><input id="purchaseName" required maxlength="120" placeholder="Product name" /><div class="form-grid"><input id="purchaseQty" type="number" min="1" step="1" value="1" placeholder="Quantity" /><input id="purchasePaid" required type="number" min="0" step="0.01" placeholder="Total paid" /></div><div class="form-grid"><input id="purchaseRetailer" maxlength="60" placeholder="Retailer" /><input id="purchaseDate" type="date" /></div><input id="purchaseNotes" maxlength="240" placeholder="Notes (optional)" /><button type="submit">Add purchase</button></form>
+      <div id="purchaseList" class="purchase-list"><small>No purchases logged yet.</small></div>
     </div>
   </dialog>
 
