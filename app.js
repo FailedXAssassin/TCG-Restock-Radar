@@ -77,7 +77,7 @@ function render(){
   $("#confirmedCount").textContent=confirmed.length;
   $("#activeCount").textContent=rows.length;
   const newestConfirmed=confirmed.sort((a,b)=>new Date(b.notification_at||b.checked_at||0)-new Date(a.notification_at||a.checked_at||0))[0];
-  $("#latestVerified").textContent=newestConfirmed ? ${newestConfirmed.store}: ${newestConfirmed.product} : "No confirmed retail stock";
+  $("#latestVerified").textContent=newestConfirmed ? `${newestConfirmed.store}: ${newestConfirmed.product}` : "No confirmed retail stock";
   if(!filtered.length) $("#results").innerHTML=`<div class="status card">${viewMode==="local"?"No nearby products with confirmed local inventory are available yet.":"No drops match the current filters."}</div>`;
 }
 
