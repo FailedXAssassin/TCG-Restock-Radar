@@ -1,6 +1,8 @@
 import asyncio
 import hashlib
 import json
+import os
+import secrets
 import random
 import re
 import time
@@ -10,13 +12,14 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from parsers import PARSER_VERSION, parse_target, parse_walmart
 
 
 ROOT = Path(__file__).resolve().parent
-SOURCES_FILE = ROOT / "sources.json"
+SOURCES_FILE = Path(os.environ.get("TCG_RADAR_DATA_PATH", ROOT / "sources.json"))
+ADMIN_SECRET = os.environ.get("TCG_RADAR_ADMIN_SECRET", "")
 
 USER_AGENT = (
     "Mozilla/5.0 (Linux; Android 16) "
@@ -109,19 +112,7 @@ def load_sources():
     if not SOURCES_FILE.exists():
         return []
 
-    try:
-        raw = json.loads(
-            SOURCES_FILE.read_text(
-                encoding="utf-8"
-            )
-        )
-    except Exception as exc:
-        print("Could not read sources.json:", exc)
-        return []
-
-    if not isinstance(raw, list):
-        return []
-
+    raw = _all_sources()
     valid = []
 
     for source in raw:
@@ -139,6 +130,59 @@ def load_sources():
         valid.append(source)
 
     return valid
+
+
+
+def _all_sources():
+    if not SOURCES_FILE.exists():
+        return []
+    try:
+        raw = json.loads(SOURCES_FILE.read_text(encoding="utf-8"))
+        return raw if isinstance(raw, list) else []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _write_sources(sources):
+    temporary = SOURCES_FILE.with_suffix(".tmp")
+    temporary.write_text(json.dumps(sources, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(SOURCES_FILE)
+
+
+def _clean_source(payload):
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail="Product data must be an object")
+    url = str(payload.get("url", "")).strip()
+    if not url.startswith(("https://", "http://")):
+        raise HTTPException(status_code=422, detail="A public product URL is required")
+    product = str(payload.get("product", "")).strip()
+    if not product:
+        raise HTTPException(status_code=422, detail="Product name is required")
+    msrp = safe_float(payload.get("msrp"))
+    if msrp is not None and msrp <= 0:
+        raise HTTPException(status_code=422, detail="MSRP must be greater than zero")
+    priority = str(payload.get("priority", "normal")).lower()
+    if priority not in {"high", "normal", "low"}:
+        raise HTTPException(status_code=422, detail="Priority must be high, normal, or low")
+    return {
+        "enabled": bool(payload.get("enabled", True)),
+        "game": str(payload.get("game", "Other")).strip() or "Other",
+        "area": str(payload.get("area", "Online")).strip() or "Online",
+        "store": retailer_name(url, str(payload.get("store", "")).strip()),
+        "product": product,
+        "url": url,
+        "msrp": msrp,
+        "max_markup": safe_float(payload.get("max_markup"), 80),
+        "priority": priority,
+    }
+
+
+def require_admin(authorization=Header(default="")):
+    if not ADMIN_SECRET:
+        raise HTTPException(status_code=503, detail="Owner controls are not configured yet")
+    token = authorization.removeprefix("Bearer ").strip()
+    if not token or not secrets.compare_digest(token, ADMIN_SECRET):
+        raise HTTPException(status_code=401, detail="Owner secret is not valid")
 
 
 def extract_price(text):
@@ -688,7 +732,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="TCG Radar API",
-    version="3.1.0",
+    version="3.2.0",
     lifespan=lifespan,
 )
 
@@ -708,7 +752,7 @@ app.add_middleware(
 async def root():
     return {
         "name": "TCG Radar",
-        "version": "3.1.0",
+        "version": "3.2.0",
         "status": "online",
         "message": "TCG Radar backend is running.",
     }
@@ -720,7 +764,7 @@ async def health():
 
     return {
         "status": "online",
-        "version": "3.1.0",
+        "version": "3.2.0",
         "time": now_iso(),
         "configured_products": len(
             sources
@@ -803,3 +847,56 @@ async def retailer_status():
             retailer_health.values()
         ),
   }
+
+
+@app.get("/api/admin/status")
+async def admin_status(authorization: str = Header(default="")):
+    require_admin(authorization)
+    return {"configured": True, "storage": str(SOURCES_FILE.name), "persistent_volume_required": "RAILWAY_VOLUME_MOUNT_PATH" not in os.environ}
+
+
+@app.get("/api/admin/products")
+async def admin_products(authorization: str = Header(default="")):
+    require_admin(authorization)
+    sources = _all_sources()
+    return {"items": [{**source, "id": source_id(source)} for source in sources]}
+
+
+@app.post("/api/admin/products", status_code=201)
+async def add_product(payload: dict, authorization: str = Header(default="")):
+    require_admin(authorization)
+    source = _clean_source(payload)
+    sources = _all_sources()
+    if any(source.get("url") == item.get("url") for item in sources):
+        raise HTTPException(status_code=409, detail="That product URL is already being monitored")
+    sources.append(source)
+    _write_sources(sources)
+    return {**source, "id": source_id(source)}
+
+
+@app.patch("/api/admin/products/{product_id}")
+async def update_product(product_id: str, payload: dict, authorization: str = Header(default="")):
+    require_admin(authorization)
+    sources = _all_sources()
+    for index, current in enumerate(sources):
+        if source_id(current) != product_id:
+            continue
+        source = _clean_source({**current, **payload})
+        if any(index != other_index and source.get("url") == other.get("url") for other_index, other in enumerate(sources)):
+            raise HTTPException(status_code=409, detail="That product URL is already being monitored")
+        sources[index] = source
+        products.pop(product_id, None)
+        _write_sources(sources)
+        return {**source, "id": source_id(source)}
+    raise HTTPException(status_code=404, detail="Monitored product was not found")
+
+
+@app.delete("/api/admin/products/{product_id}", status_code=204)
+async def delete_product(product_id: str, authorization: str = Header(default="")):
+    require_admin(authorization)
+    sources = _all_sources()
+    remaining = [item for item in sources if source_id(item) != product_id]
+    if len(remaining) == len(sources):
+        raise HTTPException(status_code=404, detail="Monitored product was not found")
+    products.pop(product_id, None)
+    _write_sources(remaining)

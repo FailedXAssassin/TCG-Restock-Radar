@@ -96,7 +96,28 @@ async function loadHealth(){
 
 ["gameFilter","areaFilter","retailerFilter","statusFilter","markupFilter","searchInput"].forEach(id=>$("#"+id).addEventListener("input",render));
 $("#refreshBtn").addEventListener("click",loadFeed);
-$("#settingsBtn").style.display="none";
+const ADMIN_KEY="tcg-radar-owner-secret";
+function api(path){ return `${API_BASE}${path.replace(/^\//,"")}`; }
+async function ownerFetch(path, options={}){
+  let secret=sessionStorage.getItem(ADMIN_KEY);
+  if(!secret){ secret=prompt("Enter your TCG Radar owner secret"); if(!secret) throw new Error("Owner secret is required"); sessionStorage.setItem(ADMIN_KEY,secret); }
+  const response=await fetch(api(path),{...options,headers:{Authorization:`Bearer ${secret}`,"Content-Type":"application/json",...(options.headers||{})}});
+  if(response.status===401){ sessionStorage.removeItem(ADMIN_KEY); throw new Error("That owner secret was not accepted"); }
+  if(!response.ok){ const data=await response.json().catch(()=>({})); throw new Error(data.detail||`HTTP ${response.status}`); }
+  return response.status===204?null:response.json();
+}
+async function showOwner(){
+  $("#ownerDialog").showModal(); $("#ownerMessage").textContent="Loading monitored products…";
+  try{const data=await ownerFetch("/api/admin/products"); renderOwnerProducts(data.items||[]); $("#ownerMessage").textContent="Add a public retailer URL. New products start as unknown until their first safe check.";}
+  catch(error){$("#ownerMessage").textContent=error.message;}
+}
+function renderOwnerProducts(items){
+  $("#ownerProducts").innerHTML="";
+  for(const item of items){ const el=document.createElement("div"); el.className="owner-product"; el.innerHTML=`<span><strong></strong><small></small></span><button type="button">Remove</button>`; el.querySelector("strong").textContent=item.product; el.querySelector("small").textContent=`${item.store} • ${item.priority} priority`; el.querySelector("button").onclick=async()=>{if(!confirm(`Remove ${item.product}?`))return; try{await ownerFetch(`/api/admin/products/${item.id}`,{method:"DELETE"}); showOwner(); loadFeed();}catch(error){$("#ownerMessage").textContent=error.message;}}; $("#ownerProducts").appendChild(el); }
+}
+$("#ownerBtn").addEventListener("click",showOwner);
+$("#closeOwnerBtn").addEventListener("click",()=>$("#ownerDialog").close());
+$("#productForm").addEventListener("submit",async event=>{event.preventDefault(); $("#ownerMessage").textContent="Saving product…"; try{await ownerFetch("/api/admin/products",{method:"POST",body:JSON.stringify({product:$("#ownerProduct").value,url:$("#ownerUrl").value,game:$("#ownerGame").value,msrp:$("#ownerMsrp").value||null,priority:$("#ownerPriority").value,area:"Online"})}); event.target.reset(); await showOwner(); loadFeed();}catch(error){$("#ownerMessage").textContent=error.message;}});
 
 $("#notifyBtn").textContent="Push alerts: coming soon";
 $("#notifyBtn").disabled=true;
