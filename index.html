@@ -111,6 +111,7 @@
       <button id="refreshBtn">Refresh</button>
       <button id="notifyBtn" class="secondary">Enable Notifications</button>
       <button id="alertSettingsBtn" class="secondary">Alert Settings</button>
+      <button id="helpBtn" class="secondary">Help & Chat</button>
       <button id="ownerBtn" class="secondary" hidden>Manage Products</button>
     </section>
 
@@ -167,6 +168,16 @@
     </form>
   </dialog>
 
+  <dialog id="helpDialog">
+    <div class="dialog-card">
+      <div class="dialog-title"><h2>Help & Chat</h2><button id="closeHelpBtn" type="button" class="secondary">Close</button></div>
+      <p class="muted">Send me a question anytime. I may not reply immediately, but your conversation will stay here on this device.</p>
+      <div id="helpMessages" class="help-messages"><small>No messages yet.</small></div>
+      <form id="helpForm" class="product-form"><textarea id="helpBody" required maxlength="1000" rows="3" placeholder="What can I help with?"></textarea><button type="submit">Send message</button></form>
+      <p id="helpMessage" class="muted"></p>
+    </div>
+  </dialog>
+
   <dialog id="ownerDialog">
     <div class="dialog-card">
       <div class="dialog-title"><h2>Owner tools</h2><button id="closeOwnerBtn" class="secondary">Close</button></div>
@@ -194,6 +205,8 @@
           <div class="form-grid"><input id="moderatorName" required maxlength="60" placeholder="Moderator name" /><button type="submit">Create moderator code</button></div>
         </form>
         <div id="moderatorList" class="owner-products"></div>
+        <div class="owner-actions"><button id="loadHelpBtn" type="button" class="secondary">Open help inbox</button></div>
+        <div id="ownerHelp" class="owner-products"></div>
         <div class="owner-actions"><button id="loadReportsBtn" type="button" class="secondary">Review user reports</button></div>
         <div id="ownerReports" class="owner-products"></div>
         <div class="owner-actions"><button id="testPushBtn" type="button" class="secondary">Send 10-sec Closed-App Test</button><button id="lockManagerBtn" type="button" class="secondary">Lock</button></div>
