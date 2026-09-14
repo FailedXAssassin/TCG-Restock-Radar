@@ -103,7 +103,7 @@ def parse_walmart(text, expected_item_id=None):
     try:
         product = data["props"]["pageProps"]["initialData"]["data"]["product"]
     except (TypeError, KeyError):
-        return _walmart_marketplace_fallback(text) or {
+        return {
             "status": "unknown", "price": None, "seller": None,
             "evidence": "Walmart structured product data was unavailable", "parser_version": PARSER_VERSION,
         }
@@ -130,7 +130,7 @@ def parse_walmart(text, expected_item_id=None):
         seller = offer.get("sellerDisplayName") or offer.get("sellerName") or "Marketplace seller"
         return {"status": "marketplace_in_stock", "price": _price(offer), "seller": seller,
                 "evidence": "Only a third-party Marketplace offer is confidently available", "parser_version": PARSER_VERSION}
-    return _walmart_marketplace_fallback(text) or {
+    return {
         "status": "unknown", "price": None, "seller": None,
         "evidence": "No associated Walmart-owned offer could be classified", "parser_version": PARSER_VERSION,
     }
