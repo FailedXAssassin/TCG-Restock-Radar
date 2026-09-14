@@ -29,19 +29,19 @@
       <div class="hero-pulse"><span></span> Live scan</div>
     </section>
 
-    <section class="radar-snapshot" aria-label="Radar snapshot">
+    <section class="radar-snapshot" data-page="radar" aria-label="Radar snapshot">
       <article class="snapshot-card"><span class="snapshot-icon">◉</span><div><small>Confirmed now</small><strong id="confirmedCount">0</strong></div></article>
       <article class="snapshot-card"><span class="snapshot-icon">⌁</span><div><small>Active trackers</small><strong id="activeCount">0</strong></div></article>
       <article class="snapshot-card snapshot-highlight"><span class="snapshot-icon">✦</span><div><small>Latest verified</small><strong id="latestVerified">Waiting for a scan</strong></div></article>
     </section>
 
-    <details id="welcomeGuide" class="welcome-guide card">
+    <details id="welcomeGuide" data-page="radar" class="welcome-guide card">
       <summary><span><strong>New here? Start in 30 seconds</strong><small>Three quick steps to make the radar yours</small></span><span class="filter-icon">⌄</span></summary>
       <div class="guide-steps"><span><b>1</b> Tap <strong>Alerts</strong> to allow notifications.</span><span><b>2</b> Choose your personal price limit in <strong>Alert settings</strong>.</span><span><b>3</b> Use <strong>Filter products</strong> to follow what you collect.</span></div>
       <button id="dismissGuide" type="button" class="secondary">Got it</button>
     </details>
 
-    <details class="filter-drawer card">
+    <details data-page="radar" class="filter-drawer card">
       <summary><span><strong>Filter products</strong><small>Game, retailer, price and availability</small></span><span class="filter-icon">⌄</span></summary>
     <section class="controls">
       <div class="control-group">
@@ -114,7 +114,7 @@
     </section>
     </details>
 
-    <section class="summary">
+    <section data-page="radar" class="summary">
       <div class="stat card">
         <span id="resultCount">0</span>
         <small>matching products</small>
@@ -129,7 +129,8 @@
       </div>
     </section>
 
-    <section class="actions quick-actions">
+    <section data-page="more" class="page-heading"><div class="eyebrow">YOUR TOOLS</div><h2>Settings & support</h2><p>Alerts, purchases, help, and manager access.</p></section>
+    <section data-page="more" class="actions quick-actions">
       <button id="refreshBtn">↻ <span>Refresh</span></button>
       <button id="notifyBtn" class="secondary">◉ <span>Alerts</span></button>
       <button id="alertSettingsBtn" class="secondary">⚙ <span>Alert settings</span></button>
@@ -142,20 +143,27 @@
       <button id="onlineModeBtn" role="tab" aria-selected="true">Online Radar</button>
       <button id="localModeBtn" class="secondary" role="tab" aria-selected="false">Nearby Stock</button>
     </section>
-    <section id="localPanel" class="local-panel card" hidden>
+    <section data-page="nearby" class="page-heading"><div class="eyebrow">LOCAL RADAR</div><h2>Nearby stock</h2><p>Find confirmed in-store availability around you.</p></section>
+    <section id="localPanel" data-page="nearby" class="local-panel card" hidden>
       <div><div class="eyebrow">LOCAL RADAR</div><h2>Find stock near you</h2><p class="muted">Your location stays on this device. Choose a search radius, then allow location access.</p></div>
       <div class="local-controls"><label for="radiusFilter">Search radius</label><select id="radiusFilter"><option value="5">5 miles</option><option value="10">10 miles</option><option value="20">20 miles</option><option value="50">50 miles</option></select><button id="useLocationBtn">Use my location</button></div>
       <p id="locationStatus" class="muted">Location has not been used.</p>
       <p class="local-note">Local inventory is added retailer-by-retailer and remains <strong>Unknown</strong> whenever a store does not provide reliable public stock data.</p>
     </section>
 
-    <section id="statusBox" class="status card"></section>
-    <section class="feed-heading"><div><div class="eyebrow">RADAR ACTIVITY</div><h2>Latest notifications</h2><p>Meaningful restock movement, newest first.</p></div><span id="sortLabel" class="badge">Newest first</span></section>
-    <section class="alerts-panel card"><div class="alerts-title"><h3>Notification history</h3><small>Saved alerts from meaningful status changes</small></div><div id="alertHistory" class="alert-history"><small>No notifications recorded yet.</small></div></section>
-    <section id="results" class="grid"></section>
-    <section class="health-section">
+    <section id="statusBox" data-page="radar" class="status card"></section>
+    <section data-page="radar" class="feed-heading"><div><div class="eyebrow">RADAR ACTIVITY</div><h2>Latest notifications</h2><p>Meaningful restock movement, newest first.</p></div><span id="sortLabel" class="badge">Newest first</span></section>
+    <section data-page="alerts" class="page-heading"><div class="eyebrow">ALERT HISTORY</div><h2>Your latest drops</h2><p>Only meaningful restock movement is saved here.</p></section>
+    <section data-page="alerts" class="alerts-panel card"><div class="alerts-title"><h3>Notification history</h3><small>Saved alerts from meaningful status changes</small></div><div id="alertHistory" class="alert-history"><small>No notifications recorded yet.</small></div></section>
+    <section id="results" data-page="radar" class="grid"></section>
+    <section data-page="radar" class="health-section">
       <h2>Retailer health</h2>
       <div id="healthGrid" class="health-grid"></div>
+    </section>
+    <section id="collectionPage" data-page="collection" class="collection-page card" hidden>
+      <div class="eyebrow">MY COLLECTION</div><h2>Track what you actually paid</h2>
+      <p>Use your Google account so purchases stay with you when you change phones or reinstall TCG Radar.</p>
+      <button id="openPurchasePage" type="button">Open purchase tracker</button>
     </section>
   </main>
 
