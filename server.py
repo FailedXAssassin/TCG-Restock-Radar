@@ -29,6 +29,7 @@ ADMIN_SECRET = os.environ.get("TCG_RADAR_ADMIN_SECRET", "")
 VAPID_PUBLIC_KEY = os.environ.get("TCG_RADAR_VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = os.environ.get("TCG_RADAR_VAPID_PRIVATE_KEY", "")
 VAPID_CONTACT = os.environ.get("TCG_RADAR_VAPID_CONTACT", "mailto:owner@example.com")
+GOOGLE_CLIENT_ID = os.environ.get("TCG_RADAR_GOOGLE_CLIENT_ID", "")
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 USER_AGENT = (
@@ -171,6 +172,9 @@ def ensure_database():
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_reports (id TEXT PRIMARY KEY, product_id TEXT NOT NULL, reason TEXT NOT NULL, details TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), resolved BOOLEAN NOT NULL DEFAULT FALSE)")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_alert_events (id TEXT PRIMARY KEY, product_id TEXT NOT NULL, payload JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_support_messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, client_id TEXT NOT NULL, sender TEXT NOT NULL, body TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cursor.execute("CREATE TABLE IF NOT EXISTS radar_support_bans (client_id TEXT PRIMARY KEY, reason TEXT NOT NULL DEFAULT 'Spam', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cursor.execute("CREATE TABLE IF NOT EXISTS radar_users (google_sub TEXT PRIMARY KEY, email TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cursor.execute("CREATE TABLE IF NOT EXISTS radar_purchases (id TEXT PRIMARY KEY, google_sub TEXT NOT NULL, payload JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("SELECT COUNT(*) FROM radar_products")
             if cursor.fetchone()[0] == 0:
                 for source in _file_sources():
@@ -417,6 +421,55 @@ def _write_support_message(message):
         with _database_connection() as connection:
             with connection.cursor() as cursor:
                 cursor.execute("INSERT INTO radar_support_messages (id, thread_id, client_id, sender, body) VALUES (%s, %s, %s, %s, %s)", (message["id"], message["thread_id"], message["client_id"], message["sender"], message["body"]))
+            connection.commit()
+
+
+def google_user(authorization):
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=503, detail="Google sign-in is not configured yet")
+    token = str(authorization or "").removeprefix("Bearer ").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Google sign-in is required")
+    try:
+        from google.auth.transport import requests as google_requests
+        from google.oauth2 import id_token
+        claims = id_token.verify_oauth2_token(token, google_requests.Request(), GOOGLE_CLIENT_ID)
+    except Exception:
+        raise HTTPException(status_code=401, detail="That Google sign-in could not be verified")
+    if not claims.get("sub") or not claims.get("email"):
+        raise HTTPException(status_code=401, detail="Google did not provide a usable account")
+    user = {"google_sub": str(claims["sub"]), "email": str(claims["email"]), "name": str(claims.get("name", ""))}
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("INSERT INTO radar_users (google_sub, email, name) VALUES (%s, %s, %s) ON CONFLICT (google_sub) DO UPDATE SET email = EXCLUDED.email, name = EXCLUDED.name, updated_at = NOW()", (user["google_sub"], user["email"], user["name"]))
+            connection.commit()
+    return user
+
+
+def _user_purchases(google_sub):
+    if not database_enabled():
+        return []
+    with _database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT payload FROM radar_purchases WHERE google_sub = %s ORDER BY created_at DESC", (google_sub,))
+            return [row[0] for row in cursor.fetchall()]
+
+
+def _is_support_banned(client_id):
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1 FROM radar_support_bans WHERE client_id = %s", (client_id,))
+                return cursor.fetchone() is not None
+    return False
+
+
+def _ban_support_client(client_id, reason="Spam"):
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("INSERT INTO radar_support_bans (client_id, reason) VALUES (%s, %s) ON CONFLICT (client_id) DO UPDATE SET reason = EXCLUDED.reason", (client_id, reason))
             connection.commit()
 
 
@@ -1184,6 +1237,52 @@ async def alert_history():
     return {"items": _alert_history()}
 
 
+@app.get("/api/auth/config")
+async def auth_config():
+    return {"enabled": bool(GOOGLE_CLIENT_ID), "client_id": GOOGLE_CLIENT_ID or None}
+
+
+@app.get("/api/auth/me")
+async def auth_me(authorization: str = Header(default="")):
+    return google_user(authorization)
+
+
+@app.get("/api/purchases")
+async def list_purchases(authorization: str = Header(default="")):
+    user = google_user(authorization)
+    return {"items": _user_purchases(user["google_sub"])}
+
+
+@app.post("/api/purchases", status_code=201)
+async def add_purchase(payload: dict, authorization: str = Header(default="")):
+    user = google_user(authorization)
+    name = str(payload.get("name", "")).strip()[:160]
+    quantity = int(payload.get("quantity", 1))
+    paid = safe_float(payload.get("paid"))
+    if not name or quantity < 1 or paid is None or paid < 0:
+        raise HTTPException(status_code=422, detail="Product, quantity, and a valid amount paid are required")
+    purchase = {"id": secrets.token_urlsafe(12), "name": name, "quantity": quantity, "paid": round(paid, 2), "retailer": str(payload.get("retailer", "")).strip()[:80], "date": str(payload.get("date", "")).strip()[:30], "notes": str(payload.get("notes", "")).strip()[:300]}
+    if not database_enabled():
+        raise HTTPException(status_code=503, detail="Persistent purchase storage is not available")
+    with _database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("INSERT INTO radar_purchases (id, google_sub, payload) VALUES (%s, %s, %s::jsonb)", (purchase["id"], user["google_sub"], json.dumps(purchase)))
+        connection.commit()
+    return purchase
+
+
+@app.delete("/api/purchases/{purchase_id}")
+async def delete_purchase(purchase_id: str, authorization: str = Header(default="")):
+    user = google_user(authorization)
+    if not database_enabled():
+        raise HTTPException(status_code=503, detail="Persistent purchase storage is not available")
+    with _database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM radar_purchases WHERE id = %s AND google_sub = %s", (purchase_id, user["google_sub"]))
+        connection.commit()
+    return {"deleted": True}
+
+
 @app.get("/api/help/messages")
 async def help_messages(thread_id: str = ""):
     thread_id = str(thread_id).strip()[:80]
@@ -1199,6 +1298,8 @@ async def create_help_message(payload: dict):
     body = str(payload.get("body", "")).strip()[:1000]
     if not thread_id or not client_id or not body:
         raise HTTPException(status_code=422, detail="Conversation ID and message are required")
+    if _is_support_banned(client_id):
+        raise HTTPException(status_code=403, detail="This help account has been blocked from sending messages")
     message = {"id": secrets.token_urlsafe(12), "thread_id": thread_id, "client_id": client_id, "sender": "user", "body": body, "created_at": now_iso()}
     _write_support_message(message)
     return message
@@ -1227,6 +1328,16 @@ async def reply_help(thread_id: str, payload: dict, authorization: str = Header(
     message = {"id": secrets.token_urlsafe(12), "thread_id": thread_id, "client_id": client_id, "sender": "owner", "body": body, "created_at": now_iso()}
     _write_support_message(message)
     return message
+
+
+@app.post("/api/admin/help/{client_id}/ban")
+async def ban_help_client(client_id: str, authorization: str = Header(default="")):
+    require_admin(authorization)
+    client_id = str(client_id).strip()[:80]
+    if not client_id:
+        raise HTTPException(status_code=422, detail="A client ID is required")
+    _ban_support_client(client_id)
+    return {"banned": True, "client_id": client_id}
 
 
 @app.get("/api/admin/products")
