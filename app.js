@@ -42,6 +42,8 @@ function render(){
   const tpl=$("#itemTemplate");
   for(const item of filtered){
     const node=tpl.content.cloneNode(true);
+    const image=node.querySelector(".product-image");
+    if(item.image_url){ image.src=item.image_url; image.alt=item.product||"Product image"; image.onerror=()=>{image.hidden=true;}; } else image.hidden=true;
     node.querySelector(".game").textContent=item.game;
     node.querySelector(".area").textContent=item.area;
     node.querySelector(".product").textContent=item.product;

@@ -25,7 +25,7 @@ button.secondary{background:#1f2937;color:var(--text);border:1px solid var(--lin
 .status{padding:12px 14px;margin:10px 0;color:var(--muted);font-size:.9rem}
 .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
 .drop{padding:14px}
-.drop-head{display:flex;justify-content:space-between;gap:8px}
+.drop-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.drop-tags{display:flex;justify-content:space-between;gap:8px;flex:1}.product-image{width:82px;height:82px;object-fit:contain;border-radius:10px;background:#0f172a;border:1px solid var(--line);padding:4px}
 .status-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px}.seller{font-size:.72rem;color:var(--muted);text-align:right}.product-status.in_stock{color:var(--good)}.product-status.marketplace_in_stock{color:#fb923c}.product-status.loaded{color:var(--warn)}.product-status.sold_out,.product-status.error,.product-status.blocked,.product-status.not_found{color:var(--bad)}
 .badge{display:inline-flex;padding:5px 8px;border-radius:999px;font-size:.72rem;font-weight:800;background:#0f172a;border:1px solid var(--line)}
 .product{margin:12px 0 4px;font-size:1.05rem}

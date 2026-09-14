@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import html
 import json
 import os
 import secrets
@@ -408,6 +409,22 @@ def extract_price(text):
                 pass
 
     return None
+def extract_image_url(text):
+    """Return only a public image URL explicitly supplied by the page."""
+    patterns = [
+        r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)',
+        r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)',
+        r'["\']image["\']\s*:\s*["\'](https?://[^"\']+)',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, re.I | re.S)
+        if match:
+            candidate = html.unescape(match.group(1)).strip()
+            if candidate.startswith("https://"):
+                return candidate
+    return None
+
+
 def detect_quantity(text):
     """
     Quantity is only returned when a clear public quantity
@@ -683,6 +700,7 @@ async def check_product(source):
         quantity = detect_quantity(
             response.text
         )
+        image_url = str(source.get("image_url", "")).strip() or extract_image_url(response.text)
 
         if status == "blocked":
             mark_failure(
@@ -751,6 +769,7 @@ async def check_product(source):
             "msrp": msrp,
             "markup": markup,
             "quantity": quantity,
+            "image_url": image_url,
             "priority": source.get(
                 "priority",
                 "normal",
@@ -808,6 +827,7 @@ async def check_product(source):
             ),
             "markup": previous.get("markup"),
             "quantity": None,
+            "image_url": previous.get("image_url"),
             "priority": source.get(
                 "priority",
                 "normal",
