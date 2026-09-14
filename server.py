@@ -24,6 +24,7 @@ DATA_DIR = Path(os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", ROOT))
 SOURCES_FILE = Path(os.environ.get("TCG_RADAR_DATA_PATH", DATA_DIR / "sources.json"))
 PUSH_SUBSCRIPTIONS_FILE = Path(os.environ.get("TCG_RADAR_PUSH_SUBSCRIPTIONS_PATH", DATA_DIR / "push_subscriptions.json"))
 MODERATORS_FILE = Path(os.environ.get("TCG_RADAR_MODERATORS_PATH", DATA_DIR / "moderators.json"))
+ALERT_HISTORY_FILE = Path(os.environ.get("TCG_RADAR_ALERT_HISTORY_PATH", DATA_DIR / "alert_history.json"))
 ADMIN_SECRET = os.environ.get("TCG_RADAR_ADMIN_SECRET", "")
 VAPID_PUBLIC_KEY = os.environ.get("TCG_RADAR_VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = os.environ.get("TCG_RADAR_VAPID_PRIVATE_KEY", "")
@@ -168,6 +169,7 @@ def ensure_database():
             cursor.execute("CREATE TABLE IF NOT EXISTS push_subscriptions (endpoint TEXT PRIMARY KEY, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_moderators (id TEXT PRIMARY KEY, name TEXT NOT NULL, secret_hash TEXT NOT NULL UNIQUE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_reports (id TEXT PRIMARY KEY, product_id TEXT NOT NULL, reason TEXT NOT NULL, details TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), resolved BOOLEAN NOT NULL DEFAULT FALSE)")
+            cursor.execute("CREATE TABLE IF NOT EXISTS radar_alert_events (id TEXT PRIMARY KEY, product_id TEXT NOT NULL, payload JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("SELECT COUNT(*) FROM radar_products")
             if cursor.fetchone()[0] == 0:
                 for source in _file_sources():
@@ -370,6 +372,33 @@ def _clean_push_preferences(payload):
     return {"max_markup": max_markup}
 
 
+def _alert_history():
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT payload FROM radar_alert_events ORDER BY created_at DESC LIMIT 100")
+                return [row[0] for row in cursor.fetchall()]
+    if not ALERT_HISTORY_FILE.exists():
+        return []
+    try:
+        data = json.loads(ALERT_HISTORY_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _write_alert_event(event):
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("INSERT INTO radar_alert_events (id, product_id, payload) VALUES (%s, %s, %s::jsonb)", (event["id"], event["product_id"], json.dumps(event)))
+            connection.commit()
+        return
+    history = [event] + [item for item in _alert_history() if item.get("id") != event.get("id")]
+    ALERT_HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    ALERT_HISTORY_FILE.write_text(json.dumps(history[:100], indent=2) + "\n", encoding="utf-8")
+
+
 def _send_web_push(subscription, payload):
     from pywebpush import WebPushException, webpush
     try:
@@ -388,10 +417,25 @@ def _send_web_push(subscription, payload):
 
 
 async def notify_transition(item):
-    if not push_ready() or not item.get("status_changed"):
+    if not item.get("status_changed"):
         return
     previous, current = item.get("previous_status"), item.get("status")
     if (previous, current) not in MEANINGFUL_TRANSITIONS:
+        return
+    event = {
+        "id": secrets.token_urlsafe(12),
+        "product_id": item.get("id"),
+        "product": item.get("product"),
+        "store": item.get("store"),
+        "url": item.get("url"),
+        "previous_status": previous,
+        "status": current,
+        "price": item.get("price"),
+        "msrp": item.get("msrp"),
+        "created_at": now_iso(),
+    }
+    _write_alert_event(event)
+    if not push_ready():
         return
     markup = safe_float(item.get("markup"))
     payload = {
@@ -1112,6 +1156,11 @@ async def retailer_status():
             retailer_health.values()
         ),
   }
+
+
+@app.get("/api/alerts")
+async def alert_history():
+    return {"items": _alert_history()}
 
 
 @app.get("/api/admin/status")
