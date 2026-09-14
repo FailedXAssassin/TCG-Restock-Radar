@@ -30,6 +30,7 @@ VAPID_PUBLIC_KEY = os.environ.get("TCG_RADAR_VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = os.environ.get("TCG_RADAR_VAPID_PRIVATE_KEY", "")
 VAPID_CONTACT = os.environ.get("TCG_RADAR_VAPID_CONTACT", "mailto:owner@example.com")
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", os.environ.get("TCG_RADAR_GOOGLE_CLIENT_ID", ""))
+OWNER_EMAIL = os.environ.get("TCG_RADAR_OWNER_EMAIL", "").strip().lower()
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 USER_AGENT = (
@@ -438,7 +439,7 @@ def google_user(authorization):
         raise HTTPException(status_code=401, detail="That Google sign-in could not be verified")
     if not claims.get("sub") or not claims.get("email"):
         raise HTTPException(status_code=401, detail="Google did not provide a usable account")
-    user = {"google_sub": str(claims["sub"]), "email": str(claims["email"]), "name": str(claims.get("name", ""))}
+    user = {"google_sub": str(claims["sub"]), "email": str(claims["email"]), "name": str(claims.get("name", "")), "is_owner": bool(OWNER_EMAIL and str(claims["email"]).strip().lower() == OWNER_EMAIL)}
     if database_enabled():
         with _database_connection() as connection:
             with connection.cursor() as cursor:
