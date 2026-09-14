@@ -8,7 +8,11 @@
     "url": "https://www.walmart.com/ip/13816151308",
     "msrp": 49.99,
     "max_markup": 80,
-    "priority": "high"
+    "priority": "high",
+    "set_name": "Prismatic Evolutions",
+    "product_type": "elite_trainer_box",
+    "packs": 9,
+    "official_seller_only": true
   },
   {
     "enabled": true,
@@ -42,7 +46,10 @@
     "msrp": 49.99,
     "max_markup": 80,
     "priority": "normal",
-    "official_seller_only": true
+    "official_seller_only": true,
+    "set_name": "151",
+    "product_type": "elite_trainer_box",
+    "packs": 9
   },
   {
     "enabled": true,
@@ -54,7 +61,10 @@
     "msrp": 49.99,
     "max_markup": 80,
     "priority": "normal",
-    "official_seller_only": true
+    "official_seller_only": true,
+    "set_name": "Shrouded Fable",
+    "product_type": "elite_trainer_box",
+    "packs": 9
   },
   {
     "enabled": true,
@@ -66,7 +76,10 @@
     "msrp": 49.99,
     "max_markup": 80,
     "priority": "normal",
-    "official_seller_only": true
+    "official_seller_only": true,
+    "set_name": "Stellar Crown",
+    "product_type": "elite_trainer_box",
+    "packs": 9
   },
   {
     "enabled": true,
@@ -78,6 +91,39 @@
     "msrp": 59.99,
     "max_markup": 80,
     "priority": "normal",
+    "official_seller_only": true,
+    "set_name": "Ascended Heroes",
+    "product_type": "elite_trainer_box",
+    "packs": 9
+  },
+  {
+    "enabled": true,
+    "game": "Pokemon",
+    "area": "Online",
+    "store": "Target",
+    "product": "Pokémon Trading Card Game: 30th Celebration Booster Bundle Box",
+    "url": "https://www.target.com/p/-/A-1011407490",
+    "msrp": 31.99,
+    "max_markup": 80,
+    "priority": "high",
+    "set_name": "30th Celebration",
+    "product_type": "booster_bundle",
+    "packs": 6,
+    "official_seller_only": true
+  },
+  {
+    "enabled": true,
+    "game": "Pokemon",
+    "area": "Online",
+    "store": "Target",
+    "product": "Pokémon Trading Card Game: 30th Celebration Mini Tin",
+    "url": "https://www.target.com/p/-/A-1012422107",
+    "msrp": 12.99,
+    "max_markup": 80,
+    "priority": "normal",
+    "set_name": "30th Celebration",
+    "product_type": "tin",
+    "packs": 2,
     "official_seller_only": true
   }
 ]
