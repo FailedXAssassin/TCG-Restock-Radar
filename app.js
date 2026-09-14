@@ -103,18 +103,24 @@ const ADMIN_KEY="tcg-radar-manager-secret";
 let managerRole="";
 function api(path){ return `${API_BASE}${path.replace(/^\//,"")}`; }
 async function ownerFetch(path, options={}){
-  let secret=sessionStorage.getItem(ADMIN_KEY);
-  if(!secret){ secret=prompt("Enter your TCG Radar owner or moderator code"); if(!secret) throw new Error("A manager code is required"); sessionStorage.setItem(ADMIN_KEY,secret); }
+  const secret=sessionStorage.getItem(ADMIN_KEY);
+  if(!secret) throw new Error("A manager code is required");
   const response=await fetch(api(path),{...options,headers:{Authorization:`Bearer ${secret}`,"Content-Type":"application/json",...(options.headers||{})}});
   if(response.status===401){ sessionStorage.removeItem(ADMIN_KEY); throw new Error("That owner or moderator code was not accepted"); }
   if(!response.ok){ const data=await response.json().catch(()=>({})); throw new Error(data.detail||`HTTP ${response.status}`); }
   return response.status===204?null:response.json();
 }
-async function showOwner(){
-  $("#ownerDialog").showModal(); $("#ownerMessage").textContent="Manager code required to load controls…"; $("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true;
-  try{const data=await ownerFetch("/api/admin/products"); managerRole=data.role||""; $("#productForm").hidden=false; $("#ownerOnlyControls").hidden=managerRole!=="owner"; renderOwnerProducts(data.items||[], managerRole==="owner"); if(managerRole==="owner") await loadModerators(); $("#ownerMessage").textContent=managerRole==="owner"?"Owner access: messages and moderator controls are available.":"Moderator access: you can add and remove public product URLs.";}
-  catch(error){$("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true; $("#ownerMessage").textContent=error.message;}
+async function loadManagerControls(){
+  $("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true;
+  try{const data=await ownerFetch("/api/admin/products"); managerRole=data.role||""; $("#managerLogin").hidden=true; $("#productForm").hidden=false; $("#ownerOnlyControls").hidden=managerRole!=="owner"; renderOwnerProducts(data.items||[], managerRole==="owner"); if(managerRole==="owner") await loadModerators(); $("#ownerMessage").textContent=managerRole==="owner"?"Owner access: messages and moderator controls are available.":"Moderator access: you can add and remove public product URLs.";}
+  catch(error){sessionStorage.removeItem(ADMIN_KEY); $("#managerLogin").hidden=false; $("#ownerMessage").textContent=error.message;}
 }
+function showOwner(){
+  $("#ownerDialog").showModal(); $("#managerLogin").hidden=false; $("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true; $("#managerCode").value=""; $("#ownerMessage").textContent="Enter a manager code to unlock these controls.";
+  if(sessionStorage.getItem(ADMIN_KEY)) loadManagerControls();
+}
+$("#unlockManager").addEventListener("click",async()=>{const code=$("#managerCode").value.trim(); if(!code){$("#ownerMessage").textContent="Enter a manager code first."; return;} sessionStorage.setItem(ADMIN_KEY,code); $("#ownerMessage").textContent="Checking code…"; await loadManagerControls();});
+$("#lockManagerBtn").addEventListener("click",()=>{sessionStorage.removeItem(ADMIN_KEY); managerRole=""; $("#managerLogin").hidden=false; $("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true; $("#managerCode").value=""; $("#ownerMessage").textContent="Manager controls locked.";});
 function renderOwnerProducts(items,isOwner){
   $("#ownerProducts").innerHTML="";
   for(const item of items){

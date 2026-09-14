@@ -155,7 +155,11 @@
   <dialog id="ownerDialog">
     <div class="dialog-card">
       <div class="dialog-title"><h2>Owner tools</h2><button id="closeOwnerBtn" class="secondary">Close</button></div>
-      <p class="muted">Your secret stays in this browser until you close the app.</p>
+      <p class="muted">Enter your owner or moderator code to manage products.</p>
+      <div id="managerLogin" class="product-form">
+        <input id="managerCode" type="password" autocomplete="off" placeholder="Owner or moderator code" />
+        <button id="unlockManager" type="button">Unlock manager controls</button>
+      </div>
       <form id="productForm" class="product-form">
         <input id="ownerProduct" required placeholder="Product name" />
         <input id="ownerUrl" required type="url" placeholder="Official retailer product URL" />
@@ -175,7 +179,7 @@
           <div class="form-grid"><input id="moderatorName" required maxlength="60" placeholder="Moderator name" /><button type="submit">Create moderator code</button></div>
         </form>
         <div id="moderatorList" class="owner-products"></div>
-        <div class="owner-actions"><button id="testPushBtn" type="button" class="secondary">Send 10-sec Closed-App Test</button></div>
+        <div class="owner-actions"><button id="testPushBtn" type="button" class="secondary">Send 10-sec Closed-App Test</button><button id="lockManagerBtn" type="button" class="secondary">Lock</button></div>
       </section>
       <p id="ownerMessage" class="muted"></p>
       <div id="ownerProducts" class="owner-products"></div>
