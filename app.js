@@ -119,6 +119,7 @@ function showOwner(){
   $("#ownerDialog").showModal(); $("#managerLogin").hidden=false; $("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true; $("#managerCode").value=""; $("#ownerMessage").textContent="Enter a manager code to unlock these controls.";
   if(sessionStorage.getItem(ADMIN_KEY)) loadManagerControls();
 }
+$("#cancelManager").addEventListener("click",()=>{ $("#ownerDialog").close(); });
 $("#unlockManager").addEventListener("click",async()=>{const code=$("#managerCode").value.trim(); if(!code){$("#ownerMessage").textContent="Enter a manager code first."; return;} sessionStorage.setItem(ADMIN_KEY,code); $("#ownerMessage").textContent="Checking code…"; await loadManagerControls();});
 $("#lockManagerBtn").addEventListener("click",()=>{sessionStorage.removeItem(ADMIN_KEY); managerRole=""; $("#managerLogin").hidden=false; $("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true; $("#managerCode").value=""; $("#ownerMessage").textContent="Manager controls locked.";});
 function renderOwnerProducts(items,isOwner){
