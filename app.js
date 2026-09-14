@@ -3,6 +3,10 @@ const $ = s => document.querySelector(s);
 let rows = [];
 const WATCHLIST_KEY="tcg-radar-watchlist";
 let watchlistOnly=false;
+const FILTER_IDS=["gameFilter","areaFilter","retailerFilter","statusFilter","markupFilter","quantityFilter","searchInput"];
+let appliedFilters={};
+function readFilters(){return Object.fromEntries(FILTER_IDS.map(id=>[id,$("#"+id).value]));}
+function setFilters(values){FILTER_IDS.forEach(id=>{$("#"+id).value=values[id]??"");}
 function watchlist(){try{return new Set(JSON.parse(localStorage.getItem(WATCHLIST_KEY)||"[]"));}catch(_){return new Set();}}
 function saveWatchlist(items){localStorage.setItem(WATCHLIST_KEY,JSON.stringify([...items]));}
 let deferredPrompt = null;
@@ -48,11 +52,11 @@ function retailerHref(item){
   try{ const parsed=new URL(item.url); return `intent://${parsed.host}${parsed.pathname}${parsed.search}#Intent;scheme=https;package=${packages[item.store]};S.browser_fallback_url=${encodeURIComponent(item.url)};end`; }catch(_){ return item.url||"#"; }
 }
 function render(){
-  const game=$("#gameFilter").value, area=$("#areaFilter").value;
-  const retailer=$("#retailerFilter").value, status=$("#statusFilter").value;
-  const maxMarkup=Number($("#markupFilter").value);
-  const minQuantity=Number($("#quantityFilter").value);
-  const q=$("#searchInput").value.trim().toLowerCase();
+  const game=appliedFilters.gameFilter??$("#gameFilter").value, area=appliedFilters.areaFilter??$("#areaFilter").value;
+  const retailer=appliedFilters.retailerFilter??$("#retailerFilter").value, status=appliedFilters.statusFilter??$("#statusFilter").value;
+  const maxMarkup=Number(appliedFilters.markupFilter??$("#markupFilter").value);
+  const minQuantity=Number(appliedFilters.quantityFilter??$("#quantityFilter").value);
+  const q=(appliedFilters.searchInput??$("#searchInput").value).trim().toLowerCase();
 
   const filtered=rows.filter(x=>{
     const m=markupPct(x);
@@ -231,7 +235,9 @@ $("#accountQuickBtn").addEventListener("click",()=>googleToken?signOut():openAcc
 $("#signOutBtn").addEventListener("click",signOut);
 $("#purchaseForm").addEventListener("submit",async event=>{event.preventDefault();const item={name:$("#purchaseName").value.trim(),quantity:Math.max(1,Number($("#purchaseQty").value||1)),paid:Number($("#purchasePaid").value||0),retailer:$("#purchaseRetailer").value.trim(),date:$("#purchaseDate").value,notes:$("#purchaseNotes").value.trim()};const response=await fetch(api("/api/purchases"),{method:"POST",headers:{"Content-Type":"application/json",...accountHeaders()},body:JSON.stringify(item)});if(!response.ok){$("#accountStatus").textContent=(await response.json().catch(()=>({}))).detail||"Purchase could not be saved";return;}event.target.reset();$("#purchaseQty").value="1";renderPurchases();});
 
-["gameFilter","areaFilter","retailerFilter","statusFilter","markupFilter","quantityFilter","searchInput"].forEach(id=>$("#"+id).addEventListener("input",render));
+appliedFilters=readFilters();
+$("#applyFiltersBtn").addEventListener("click",()=>{appliedFilters=readFilters();$(".filter-drawer").open=false;render();});
+$("#cancelFiltersBtn").addEventListener("click",()=>{setFilters(appliedFilters);$(".filter-drawer").open=false;});
 $("#refreshBtn").addEventListener("click",loadFeed);
 const ADMIN_KEY="tcg-radar-manager-secret";
 const MANAGER_MODE_KEY="tcg-radar-manager-mode";
