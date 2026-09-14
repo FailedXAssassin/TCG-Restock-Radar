@@ -27,6 +27,18 @@ class AdminProductTests(unittest.TestCase):
                 self.assertEqual(server._all_sources()[0]["product"], "Test")
                 self.assertFalse(path.with_suffix(".tmp").exists())
 
+    def test_push_subscription_validation(self):
+        self.assertTrue(server._valid_subscription({"endpoint": "https://push.example/1", "keys": {"p256dh": "key", "auth": "auth"}}))
+        self.assertFalse(server._valid_subscription({"endpoint": "http://push.example/1", "keys": {}}))
+
+    def test_subscription_storage_round_trip(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "push.json"
+            subscription = {"endpoint": "https://push.example/1", "keys": {"p256dh": "key", "auth": "auth"}}
+            with patch.object(server, "PUSH_SUBSCRIPTIONS_FILE", path):
+                server._write_subscriptions([subscription])
+                self.assertEqual(server._subscriptions(), [subscription])
+
     def test_owner_secret_is_required(self):
         with patch.object(server, "ADMIN_SECRET", ""):
             with self.assertRaises(HTTPException) as error:

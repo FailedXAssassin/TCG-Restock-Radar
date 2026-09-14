@@ -83,6 +83,7 @@ async function loadFeed(){
   }
   render();
   loadHealth();
+  loadPush();
 }
 
 async function loadHealth(){
@@ -119,9 +120,16 @@ $("#ownerBtn").addEventListener("click",showOwner);
 $("#closeOwnerBtn").addEventListener("click",()=>$("#ownerDialog").close());
 $("#productForm").addEventListener("submit",async event=>{event.preventDefault(); $("#ownerMessage").textContent="Saving product…"; try{await ownerFetch("/api/admin/products",{method:"POST",body:JSON.stringify({product:$("#ownerProduct").value,url:$("#ownerUrl").value,game:$("#ownerGame").value,msrp:$("#ownerMsrp").value||null,priority:$("#ownerPriority").value,area:"Online"})}); event.target.reset(); await showOwner(); loadFeed();}catch(error){$("#ownerMessage").textContent=error.message;}});
 
-$("#notifyBtn").textContent="Push alerts: coming soon";
-$("#notifyBtn").disabled=true;
-$("#notifyBtn").title="Closed-app push alerts are not connected yet.";
+function base64UrlToBytes(value){ const padded=value.replace(/-/g,"+").replace(/_/g,"/")+"=".repeat((4-value.length%4)%4); const raw=atob(padded); return Uint8Array.from(raw,c=>c.charCodeAt(0)); }
+async function loadPush(){
+  const button=$("#notifyBtn");
+  try{ const config=await fetch(api("/api/push/config"),{cache:"no-store"}).then(r=>r.json());
+    if(!config.enabled){ button.textContent="Push alerts: setup pending"; button.disabled=true; return; }
+    button.textContent=Notification.permission==="granted"?"Push alerts enabled":"Enable Push Alerts"; button.disabled=false;
+    button.onclick=async()=>{ try{ if(!("serviceWorker" in navigator)||!("PushManager" in window)) throw new Error("This browser does not support push alerts"); const permission=await Notification.requestPermission(); if(permission!=="granted") throw new Error("Notification permission was not granted"); const registration=await navigator.serviceWorker.ready; const existing=await registration.pushManager.getSubscription(); const subscription=existing||await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:base64UrlToBytes(config.public_key)}); const response=await fetch(api("/api/push/subscribe"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(subscription)}); if(!response.ok) throw new Error("Could not save this device for alerts"); button.textContent="Push alerts enabled"; }catch(error){ alert(error.message); } };
+  }catch(error){ button.textContent="Push alerts unavailable"; button.disabled=true; }
+}
+
 
 window.addEventListener("beforeinstallprompt",e=>{
   e.preventDefault(); deferredPrompt=e; $("#installBtn").hidden=false;

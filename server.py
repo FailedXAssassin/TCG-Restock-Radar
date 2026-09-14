@@ -19,7 +19,11 @@ from parsers import PARSER_VERSION, parse_target, parse_walmart
 
 ROOT = Path(__file__).resolve().parent
 SOURCES_FILE = Path(os.environ.get("TCG_RADAR_DATA_PATH", ROOT / "sources.json"))
+PUSH_SUBSCRIPTIONS_FILE = Path(os.environ.get("TCG_RADAR_PUSH_SUBSCRIPTIONS_PATH", SOURCES_FILE.parent / "push_subscriptions.json"))
 ADMIN_SECRET = os.environ.get("TCG_RADAR_ADMIN_SECRET", "")
+VAPID_PUBLIC_KEY = os.environ.get("TCG_RADAR_VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = os.environ.get("TCG_RADAR_VAPID_PRIVATE_KEY", "")
+VAPID_CONTACT = os.environ.get("TCG_RADAR_VAPID_CONTACT", "mailto:owner@example.com")
 
 USER_AGENT = (
     "Mozilla/5.0 (Linux; Android 16) "
@@ -183,6 +187,72 @@ def require_admin(authorization=Header(default="")):
     token = authorization.removeprefix("Bearer ").strip()
     if not token or not secrets.compare_digest(token, ADMIN_SECRET):
         raise HTTPException(status_code=401, detail="Owner secret is not valid")
+
+
+
+def _subscriptions():
+    if not PUSH_SUBSCRIPTIONS_FILE.exists():
+        return []
+    try:
+        raw = json.loads(PUSH_SUBSCRIPTIONS_FILE.read_text(encoding="utf-8"))
+        return raw if isinstance(raw, list) else []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _write_subscriptions(subscriptions):
+    temporary = PUSH_SUBSCRIPTIONS_FILE.with_suffix(".tmp")
+    temporary.write_text(json.dumps(subscriptions, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(PUSH_SUBSCRIPTIONS_FILE)
+
+
+def push_ready():
+    return bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY)
+
+
+def _valid_subscription(subscription):
+    if not isinstance(subscription, dict) or not str(subscription.get("endpoint", "")).startswith("https://"):
+        return False
+    keys = subscription.get("keys")
+    return isinstance(keys, dict) and bool(keys.get("p256dh") and keys.get("auth"))
+
+
+def _send_web_push(subscription, payload):
+    from pywebpush import WebPushException, webpush
+    try:
+        webpush(
+            subscription_info=subscription,
+            data=json.dumps(payload),
+            vapid_private_key=VAPID_PRIVATE_KEY,
+            vapid_claims={"sub": VAPID_CONTACT},
+        )
+        return False
+    except WebPushException as error:
+        return getattr(error.response, "status_code", None) in {404, 410}
+    except Exception as error:
+        print("Push delivery failed:", type(error).__name__)
+        return False
+
+
+async def notify_transition(item):
+    if not push_ready() or not item.get("status_changed"):
+        return
+    previous, current = item.get("previous_status"), item.get("status")
+    meaningful = {("unknown", "loaded"), ("loaded", "in_stock"), ("sold_out", "in_stock"), ("unknown", "in_stock")}
+    if (previous, current) not in meaningful:
+        return
+    payload = {
+        "title": "TCG Radar alert",
+        "body": f"{item.get('product')} is now {current.replace('_', ' ')} at {item.get('store')}",
+        "url": item.get("url"),
+        "tag": item.get("id"),
+    }
+    expired = []
+    for subscription in _subscriptions():
+        if await asyncio.to_thread(_send_web_push, subscription, payload):
+            expired.append(subscription.get("endpoint"))
+    if expired:
+        _write_subscriptions([item for item in _subscriptions() if item.get("endpoint") not in expired])
 
 
 def extract_price(text):
@@ -566,6 +636,7 @@ async def check_product(source):
                 f"checked {datetime.now(timezone.utc).strftime('%H:%M:%S UTC')}"
             ),
         }
+        asyncio.create_task(notify_transition(products[product_key]))
 
     except Exception as exc:
         mark_failure(
@@ -732,7 +803,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="TCG Radar API",
-    version="3.2.0",
+    version="3.3.0",
     lifespan=lifespan,
 )
 
@@ -752,7 +823,7 @@ app.add_middleware(
 async def root():
     return {
         "name": "TCG Radar",
-        "version": "3.2.0",
+        "version": "3.3.0",
         "status": "online",
         "message": "TCG Radar backend is running.",
     }
@@ -764,7 +835,7 @@ async def health():
 
     return {
         "status": "online",
-        "version": "3.2.0",
+        "version": "3.3.0",
         "time": now_iso(),
         "configured_products": len(
             sources
@@ -900,3 +971,22 @@ async def delete_product(product_id: str, authorization: str = Header(default=""
         raise HTTPException(status_code=404, detail="Monitored product was not found")
     products.pop(product_id, None)
     _write_sources(remaining)
+
+
+@app.get("/api/push/config")
+async def push_config():
+    return {"enabled": push_ready(), "public_key": VAPID_PUBLIC_KEY if push_ready() else None}
+
+
+@app.post("/api/push/subscribe", status_code=201)
+async def subscribe_push(subscription: dict):
+    if not push_ready():
+        raise HTTPException(status_code=503, detail="Push alerts are not configured yet")
+    if not _valid_subscription(subscription):
+        raise HTTPException(status_code=422, detail="Browser push subscription is incomplete")
+    subscriptions = _subscriptions()
+    endpoint = subscription["endpoint"]
+    subscriptions = [item for item in subscriptions if item.get("endpoint") != endpoint]
+    subscriptions.append(subscription)
+    _write_subscriptions(subscriptions)
+    return {"subscribed": True}
