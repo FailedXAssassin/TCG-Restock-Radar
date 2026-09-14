@@ -870,7 +870,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="TCG Radar API",
-    version="3.4.0",
+    version="3.4.1",
     lifespan=lifespan,
 )
 
@@ -890,7 +890,7 @@ app.add_middleware(
 async def root():
     return {
         "name": "TCG Radar",
-        "version": "3.4.0",
+        "version": "3.4.1",
         "status": "online",
         "message": "TCG Radar backend is running.",
     }
@@ -902,7 +902,7 @@ async def health():
 
     return {
         "status": "online",
-        "version": "3.4.0",
+        "version": "3.4.1",
         "time": now_iso(),
         "configured_products": len(
             sources
@@ -1058,3 +1058,19 @@ async def subscribe_push(subscription: dict):
     subscriptions.append(subscription)
     _write_subscriptions(subscriptions)
     return {"subscribed": True}
+
+
+@app.post("/api/admin/push/test")
+async def test_push(authorization: str = Header(default="")):
+    require_admin(authorization)
+    if not push_ready():
+        raise HTTPException(status_code=503, detail="Push alerts are not configured yet")
+    subscriptions = _subscriptions()
+    payload = {"title": "TCG Radar test", "body": "Push alerts are working on this phone.", "url": "https://failedxassassin.github.io/TCG-Restock-Radar/", "tag": "tcg-radar-test"}
+    expired = []
+    for subscription in subscriptions:
+        if await asyncio.to_thread(_send_web_push, subscription, payload):
+            expired.append(subscription.get("endpoint"))
+    if expired:
+        _write_subscriptions([item for item in _subscriptions() if item.get("endpoint") not in expired])
+    return {"attempted": len(subscriptions), "expired_removed": len(expired)}
