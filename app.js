@@ -111,9 +111,9 @@ async function ownerFetch(path, options={}){
   return response.status===204?null:response.json();
 }
 async function showOwner(){
-  $("#ownerDialog").showModal(); $("#ownerMessage").textContent="Loading monitored products…";
-  try{const data=await ownerFetch("/api/admin/products"); managerRole=data.role||""; $("#ownerOnlyControls").hidden=managerRole!=="owner"; renderOwnerProducts(data.items||[], managerRole==="owner"); if(managerRole==="owner") await loadModerators(); $("#ownerMessage").textContent=managerRole==="owner"?"Owner access: messages and moderator controls are available.":"Moderator access: you can add and remove public product URLs.";}
-  catch(error){$("#ownerMessage").textContent=error.message;}
+  $("#ownerDialog").showModal(); $("#ownerMessage").textContent="Manager code required to load controls…"; $("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true;
+  try{const data=await ownerFetch("/api/admin/products"); managerRole=data.role||""; $("#productForm").hidden=false; $("#ownerOnlyControls").hidden=managerRole!=="owner"; renderOwnerProducts(data.items||[], managerRole==="owner"); if(managerRole==="owner") await loadModerators(); $("#ownerMessage").textContent=managerRole==="owner"?"Owner access: messages and moderator controls are available.":"Moderator access: you can add and remove public product URLs.";}
+  catch(error){$("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true; $("#ownerMessage").textContent=error.message;}
 }
 function renderOwnerProducts(items,isOwner){
   $("#ownerProducts").innerHTML="";
