@@ -4,6 +4,7 @@ let rows = [];
 let deferredPrompt = null;
 let viewMode = "online";
 let activePage = "radar";
+let healthAllowed = false;
 let initialFeedRendered = false;
 const SEEN_ALERTS_KEY = "tcg-radar-seen-alerts";
 const visitorId=localStorage.getItem("tcg-radar-visitor")||crypto.randomUUID(); localStorage.setItem("tcg-radar-visitor",visitorId);
@@ -151,8 +152,11 @@ async function loadFeed(){
 }
 
 async function loadHealth(){
+  if(!healthAllowed) return;
+  const managerToken=sessionStorage.getItem("tcg-radar-manager-secret");
+  if(!managerToken) return;
   try{
-    const res=await fetch(`${API_BASE}api/retailer-health?t=${Date.now()}`,{cache:"no-store"});
+    const res=await fetch(`${API_BASE}api/retailer-health?t=${Date.now()}`,{cache:"no-store",headers:{Authorization:`Bearer ${managerToken}`}});
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data=await res.json();
     $("#healthGrid").innerHTML=(data.retailers||[]).map(x=>`<article class="card health-card"><strong>${x.retailer}</strong><span class="health-state ${x.status}">${(x.status||"unknown").replaceAll("_"," ")}</span><small>${x.monitored_product_count??0} product(s) • ${x.latency_ms??"—"} ms</small><small>${x.consecutive_failures||0} consecutive failures • ${Number(x.backoff_multiplier||1).toFixed(1)}× pacing</small></article>`).join("")||'<div class="status card">Health data will appear after the first checks.</div>';
@@ -221,7 +225,7 @@ async function ownerFetch(path, options={}){
 }
 async function loadManagerControls(){
   $("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true; $("#adminOverview").hidden=true;
-  try{const data=await ownerFetch("/api/admin/products"); managerRole=data.role||""; localStorage.setItem(MANAGER_MODE_KEY,"1"); updateManagerButton(); $("#managerLogin").hidden=true; $("#productForm").hidden=false; $("#ownerOnlyControls").hidden=managerRole!=="owner"; renderOwnerProducts(data.items||[], managerRole==="owner"); $("#adminOverview").hidden=false; $("#adminRole").textContent=managerRole==="owner"?"Owner session":"Moderator session"; $("#adminProductCount").textContent=(data.items||[]).length; $("#adminAccess").textContent=managerRole==="owner"?"Full command access":"Product links only"; if(managerRole==="owner"){await loadModerators(); await loadHelpInbox(); clearInterval(helpPollTimer); helpPollTimer=setInterval(loadHelpInbox,20000);} $("#ownerMessage").textContent=managerRole==="owner"?"Owner access: messages and moderator controls are available.":"Moderator access: you can add and remove public product URLs.";}
+  try{const data=await ownerFetch("/api/admin/products"); managerRole=data.role||""; healthAllowed=true; $("#healthSection").hidden=activePage!=="radar"; loadHealth(); localStorage.setItem(MANAGER_MODE_KEY,"1"); updateManagerButton(); $("#managerLogin").hidden=true; $("#productForm").hidden=false; $("#ownerOnlyControls").hidden=managerRole!=="owner"; renderOwnerProducts(data.items||[], managerRole==="owner"); $("#adminOverview").hidden=false; $("#adminRole").textContent=managerRole==="owner"?"Owner session":"Moderator session"; $("#adminProductCount").textContent=(data.items||[]).length; $("#adminAccess").textContent=managerRole==="owner"?"Full command access":"Product links only"; if(managerRole==="owner"){await loadModerators(); await loadHelpInbox(); clearInterval(helpPollTimer); helpPollTimer=setInterval(loadHelpInbox,20000);} $("#ownerMessage").textContent=managerRole==="owner"?"Owner access: messages and moderator controls are available.":"Moderator access: you can add and remove public product URLs.";}
   catch(error){sessionStorage.removeItem(ADMIN_KEY); $("#managerLogin").hidden=false; $("#adminOverview").hidden=true; $("#ownerMessage").textContent=error.message;}
 }
 function showOwner(){
@@ -230,7 +234,7 @@ function showOwner(){
 }
 $("#cancelManager").addEventListener("click",()=>{ $("#ownerDialog").close(); });
 $("#unlockManager").addEventListener("click",async()=>{const code=$("#managerCode").value.trim(); if(!code){$("#ownerMessage").textContent="Enter a manager code first."; return;} sessionStorage.setItem(ADMIN_KEY,code); $("#ownerMessage").textContent="Checking code…"; await loadManagerControls();});
-$("#lockManagerBtn").addEventListener("click",()=>{clearInterval(helpPollTimer); sessionStorage.removeItem(ADMIN_KEY); localStorage.removeItem(MANAGER_MODE_KEY); managerRole=""; updateManagerButton(); $("#managerLogin").hidden=false; $("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true; $("#managerCode").value=""; $("#ownerMessage").textContent="Manager controls locked.";});
+$("#lockManagerBtn").addEventListener("click",()=>{clearInterval(helpPollTimer); sessionStorage.removeItem(ADMIN_KEY); localStorage.removeItem(MANAGER_MODE_KEY); managerRole=""; healthAllowed=false; $("#healthSection").hidden=true; updateManagerButton(); $("#managerLogin").hidden=false; $("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true; $("#managerCode").value=""; $("#ownerMessage").textContent="Manager controls locked.";});
 async function loadHelpInbox(){
   try{const items=(await ownerFetch("/api/admin/help")).items||[]; const list=$("#ownerHelp"); list.innerHTML=""; if(!items.length){list.innerHTML="<small>No help messages yet.</small>";return;} const threads=new Map(); for(const item of items){if(!threads.has(item.thread_id))threads.set(item.thread_id,item);} for(const item of threads.values()){const row=document.createElement("div"); row.className="owner-help-row"; const message=document.createElement("small"); message.textContent=`${item.body} • ${new Date(item.created_at).toLocaleString()}`; const reply=document.createElement("textarea"); reply.rows=2; reply.maxLength=1000; reply.placeholder="Reply to this user…"; const actions=document.createElement("div"); actions.className="help-owner-actions"; const button=document.createElement("button"); button.type="button"; button.textContent="Reply"; button.onclick=async()=>{if(!reply.value.trim())return; await ownerFetch(`/api/admin/help/${encodeURIComponent(item.thread_id)}/reply`,{method:"POST",body:JSON.stringify({body:reply.value})}); reply.value=""; await loadHelpInbox();}; const ban=document.createElement("button"); ban.type="button"; ban.className="secondary danger-button"; ban.textContent="Ban device"; ban.onclick=async()=>{if(!confirm("Block this device from sending more help messages?"))return; await ownerFetch(`/api/admin/help/${encodeURIComponent(item.client_id)}/ban`,{method:"POST"}); row.remove();}; actions.append(button,ban); row.append(message,reply,actions); list.appendChild(row); if(lastHelpMessageId&&item.id!==lastHelpMessageId&&item.sender==="user"&&Notification.permission==="granted")new Notification("TCG Radar help request",{body:item.body}); lastHelpMessageId=item.id;}}
   catch(error){$("#ownerMessage").textContent=error.message;}
@@ -292,7 +296,7 @@ $("#alertSettingsForm").addEventListener("submit",async event=>{ event.preventDe
 
 function switchPage(page){
   activePage=page;
-  document.querySelectorAll("[data-page]").forEach(section=>{ section.hidden=section.dataset.page!==page || (section.id==="welcomeGuide" && localStorage.getItem("tcg-radar-welcome-guide-dismissed")); });
+  document.querySelectorAll("[data-page]").forEach(section=>{ section.hidden=section.dataset.page!==page || (section.id==="welcomeGuide" && localStorage.getItem("tcg-radar-welcome-guide-dismissed")) || (section.id==="healthSection" && !healthAllowed); });
   const navMap={radar:"#navRadarBtn",alerts:"#navAlertsBtn",nearby:"#navNearbyBtn",collection:"#navCollectionBtn",more:"#navMoreBtn"};
   document.querySelectorAll(".bottom-nav button").forEach(button=>button.classList.toggle("active",button===$(navMap[page])));
   if(page==="nearby") setMode("local");
