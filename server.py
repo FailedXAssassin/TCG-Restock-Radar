@@ -170,6 +170,7 @@ def ensure_database():
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_moderators (id TEXT PRIMARY KEY, name TEXT NOT NULL, secret_hash TEXT NOT NULL UNIQUE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_reports (id TEXT PRIMARY KEY, product_id TEXT NOT NULL, reason TEXT NOT NULL, details TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), resolved BOOLEAN NOT NULL DEFAULT FALSE)")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_alert_events (id TEXT PRIMARY KEY, product_id TEXT NOT NULL, payload JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cursor.execute("CREATE TABLE IF NOT EXISTS radar_support_messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, client_id TEXT NOT NULL, sender TEXT NOT NULL, body TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("SELECT COUNT(*) FROM radar_products")
             if cursor.fetchone()[0] == 0:
                 for source in _file_sources():
@@ -397,6 +398,26 @@ def _write_alert_event(event):
     history = [event] + [item for item in _alert_history() if item.get("id") != event.get("id")]
     ALERT_HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
     ALERT_HISTORY_FILE.write_text(json.dumps(history[:100], indent=2) + "\n", encoding="utf-8")
+
+
+def _support_messages(thread_id=None, limit=100):
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                if thread_id:
+                    cursor.execute("SELECT id, thread_id, client_id, sender, body, created_at FROM radar_support_messages WHERE thread_id = %s ORDER BY created_at ASC LIMIT %s", (thread_id, limit))
+                else:
+                    cursor.execute("SELECT id, thread_id, client_id, sender, body, created_at FROM radar_support_messages ORDER BY created_at DESC LIMIT %s", (limit,))
+                return [{"id": r[0], "thread_id": r[1], "client_id": r[2], "sender": r[3], "body": r[4], "created_at": r[5].isoformat()} for r in cursor.fetchall()]
+    return []
+
+
+def _write_support_message(message):
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("INSERT INTO radar_support_messages (id, thread_id, client_id, sender, body) VALUES (%s, %s, %s, %s, %s)", (message["id"], message["thread_id"], message["client_id"], message["sender"], message["body"]))
+            connection.commit()
 
 
 def _send_web_push(subscription, payload):
@@ -1163,10 +1184,49 @@ async def alert_history():
     return {"items": _alert_history()}
 
 
+@app.get("/api/help/messages")
+async def help_messages(thread_id: str = ""):
+    thread_id = str(thread_id).strip()[:80]
+    if not thread_id:
+        raise HTTPException(status_code=422, detail="A help conversation ID is required")
+    return {"items": _support_messages(thread_id)}
+
+
+@app.post("/api/help/messages", status_code=201)
+async def create_help_message(payload: dict):
+    thread_id = str(payload.get("thread_id", "")).strip()[:80]
+    client_id = str(payload.get("client_id", "")).strip()[:80]
+    body = str(payload.get("body", "")).strip()[:1000]
+    if not thread_id or not client_id or not body:
+        raise HTTPException(status_code=422, detail="Conversation ID and message are required")
+    message = {"id": secrets.token_urlsafe(12), "thread_id": thread_id, "client_id": client_id, "sender": "user", "body": body, "created_at": now_iso()}
+    _write_support_message(message)
+    return message
+
+
 @app.get("/api/admin/status")
 async def admin_status(authorization: str = Header(default="")):
     require_admin(authorization)
     return {"configured": True, "storage": str(SOURCES_FILE.name), "persistent_volume_required": "RAILWAY_VOLUME_MOUNT_PATH" not in os.environ}
+
+
+@app.get("/api/admin/help")
+async def admin_help(authorization: str = Header(default="")):
+    require_admin(authorization)
+    return {"items": _support_messages(limit=100)}
+
+
+@app.post("/api/admin/help/{thread_id}/reply", status_code=201)
+async def reply_help(thread_id: str, payload: dict, authorization: str = Header(default="")):
+    require_admin(authorization)
+    body = str(payload.get("body", "")).strip()[:1000]
+    if not body:
+        raise HTTPException(status_code=422, detail="Reply cannot be empty")
+    existing = _support_messages(thread_id, limit=1)
+    client_id = existing[0]["client_id"] if existing else "unknown"
+    message = {"id": secrets.token_urlsafe(12), "thread_id": thread_id, "client_id": client_id, "sender": "owner", "body": body, "created_at": now_iso()}
+    _write_support_message(message)
+    return message
 
 
 @app.get("/api/admin/products")
