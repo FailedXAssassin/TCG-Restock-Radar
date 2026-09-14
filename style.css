@@ -106,3 +106,8 @@ main{max-width:760px;padding:14px 16px 28px}.radar-hero{display:none}.radar-snap
 /* Subtle TCG Radar watermark, sized to stay readable on phones */
 body:before{content:"";position:fixed;z-index:0;right:-22px;bottom:21vh;width:min(42vw,250px);height:min(42vw,250px);background:url("icon-radar-v2.svg") center/contain no-repeat;opacity:.075;filter:drop-shadow(0 0 22px rgba(32,214,210,.28));pointer-events:none}
 body:after{left:50%;bottom:14vh;transform:translateX(-50%) rotate(-16deg);font-size:clamp(1.05rem,4.15vw,1.8rem);letter-spacing:.075em;color:rgba(32,214,210,.075)}
+
+
+/* Radar landing card stays exclusive to the Radar page. */
+.radar-hero[data-page="radar"]:not([hidden]){display:grid;margin:0 0 14px;padding:20px}
+@media(max-width:600px){.radar-hero[data-page="radar"]:not([hidden]){grid-template-columns:auto minmax(0,1fr);gap:14px}.radar-hero[data-page="radar"] .hero-pulse{grid-column:1/-1;margin-top:2px}}
