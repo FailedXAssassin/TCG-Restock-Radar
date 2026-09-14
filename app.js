@@ -79,7 +79,7 @@ async function loadFeed(){
   }catch(err){
     rows=[];
     $("#updatedAt").textContent="—";
-    $("#statusBox").textContent=`Feed unavailable: ${err.message}. The first GitHub Action may still be running.`;
+    $("#statusBox").textContent=`Feed unavailable: ${err.message}. Please try refreshing shortly.`;
   }
   render();
   loadHealth();
@@ -98,11 +98,9 @@ async function loadHealth(){
 $("#refreshBtn").addEventListener("click",loadFeed);
 $("#settingsBtn").style.display="none";
 
-$("#notifyBtn").addEventListener("click",async()=>{
-  if(!("Notification" in window)){ alert("Notifications are not supported in this browser."); return; }
-  const p=await Notification.requestPermission();
-  if(p==="granted") new Notification("TCG Restock Radar",{body:"Device notifications are enabled."});
-});
+$("#notifyBtn").textContent="Push alerts: coming soon";
+$("#notifyBtn").disabled=true;
+$("#notifyBtn").title="Closed-app push alerts are not connected yet.";
 
 window.addEventListener("beforeinstallprompt",e=>{
   e.preventDefault(); deferredPrompt=e; $("#installBtn").hidden=false;

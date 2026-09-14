@@ -6,7 +6,7 @@ import re
 from datetime import date
 
 
-PARSER_VERSION = "2026.09.13.1"
+PARSER_VERSION = "2026.09.14.1"
 
 
 def _next_data(text):
@@ -47,6 +47,8 @@ def _available(offer):
     states = [offer.get("availabilityStatus"), offer.get("itemPageAvailabilityStatus")]
     states.extend(x.get("availabilityStatus") for x in (offer.get("fulfillmentOptions") or []) if isinstance(x, dict))
     states = {str(x).upper() for x in states if x}
+    if states & {"IN_STOCK", "AVAILABLE"} and states & {"OUT_OF_STOCK", "NOT_AVAILABLE", "UNAVAILABLE"}:
+        return None
     if states & {"IN_STOCK", "AVAILABLE"}:
         return True
     if states & {"OUT_OF_STOCK", "NOT_AVAILABLE", "UNAVAILABLE"}:
@@ -56,7 +58,7 @@ def _available(offer):
 
 def _is_walmart(offer):
     names = {str(offer.get(k, "")).strip().lower() for k in ("sellerName", "sellerDisplayName")}
-    return bool(names & {"walmart", "walmart.com"})
+    return offer.get("sellerType", "").upper() != "EXTERNAL" and bool(names & {"walmart", "walmart.com"})
 
 
 def _target_price(value):
@@ -122,7 +124,7 @@ def parse_target(text, expected_tcin=None, today=None):
         if "three_up_sections" in node:
             fulfillment_sections.append(node.get("three_up_sections") or [])
     if not products:
-        return {"status": "not_found", "price": None, "seller": "Target",
+        return {"status": "unknown", "price": None, "seller": "Target",
                 "evidence": "No matching Target product record was found", "parser_version": PARSER_VERSION}
 
     product, item = products[0], products[0].get("item") or {}
@@ -150,9 +152,6 @@ def parse_target(text, expected_tcin=None, today=None):
     if status_values and all(x in unavailable_words for x in status_values):
         return {"status": "sold_out", "price": price, "seller": "Target",
                 "evidence": "Target fulfillment data reports unavailable", "parser_version": PARSER_VERSION}
-    if fulfillment_sections and all(not section for section in fulfillment_sections):
-        return {"status": "sold_out", "price": price, "seller": "Target",
-                "evidence": "Target product exists but has no available fulfillment section", "parser_version": PARSER_VERSION}
     title = html.unescape((item.get("product_description") or {}).get("title", ""))
     return {"status": "loaded" if title else "unknown", "price": price, "seller": "Target",
             "evidence": "Target product record exists but availability is ambiguous", "parser_version": PARSER_VERSION}

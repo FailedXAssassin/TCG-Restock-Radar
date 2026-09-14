@@ -508,3 +508,11 @@ or expensive alert subscriptions.**
 - Railway payment is not required for this parser/frontend checkpoint.
   Confirm plan/usage requirements with the user before adding a paid
   volume, database, or other paid service.
+
+### 2026-09-14 — GitHub access and deployment verified
+
+- GitHub app installation now permits repository writes. Published parser/PWA checkpoint; Railway automatically deployed version 3.1.0.
+- Corrected Target empty fulfillment handling: missing sections are not proof of sold-out inventory. Missing matching embedded records remain Unknown rather than claiming HTTP Not Found.
+- Conflicting Walmart availability signals remain Unknown; an EXTERNAL seller cannot be classified as Walmart retail merely by name.
+- Disabled the old notification-permission button and labeled push alerts as pending, because no backend Web Push delivery exists yet.
+- Persistent storage, admin CRUD and closed-app Web Push remain launch blockers. No paid resources were provisioned.

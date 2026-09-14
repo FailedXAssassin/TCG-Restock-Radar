@@ -54,9 +54,9 @@ class TargetParserTests(unittest.TestCase):
         result = parse_target(target({"mmbv_content": {"street_date": "2026-10-30"}}, []), "456", date(2026, 9, 13))
         self.assertEqual(result["status"], "loaded")
 
-    def test_empty_fulfillment_is_sold_out(self):
+    def test_empty_fulfillment_remains_loaded(self):
         result = parse_target(target({"product_description": {"title": "Trading cards"}}, []), "456", date(2026, 9, 13))
-        self.assertEqual(result["status"], "sold_out")
+        self.assertEqual(result["status"], "loaded")
 
     def test_available_fulfillment_is_in_stock(self):
         result = parse_target(target({}, [{"availability_status": "IN_STOCK"}]), "456", date(2026, 9, 13))
