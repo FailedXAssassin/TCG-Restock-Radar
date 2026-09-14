@@ -125,5 +125,50 @@
     "product_type": "tin",
     "packs": 2,
     "official_seller_only": true
+  },
+  {
+    "enabled": true,
+    "game": "Pokemon",
+    "area": "Online",
+    "store": "Walmart",
+    "product": "Pokémon TCG: Mega Evolution—Perfect Order Booster Bundle",
+    "url": "https://www.walmart.com/ip/19380764160",
+    "msrp": null,
+    "max_markup": 80,
+    "priority": "high",
+    "set_name": "Perfect Order",
+    "product_type": "booster_bundle",
+    "packs": null,
+    "official_seller_only": true
+  },
+  {
+    "enabled": true,
+    "game": "Pokemon",
+    "area": "Online",
+    "store": "Walmart",
+    "product": "Pokémon TCG: Mega Evolution—Pitch Black Booster Display Box",
+    "url": "https://www.walmart.com/ip/20140716298",
+    "msrp": null,
+    "max_markup": 80,
+    "priority": "high",
+    "set_name": "Pitch Black",
+    "product_type": "booster_box",
+    "packs": null,
+    "official_seller_only": true
+  },
+  {
+    "enabled": true,
+    "game": "Pokemon",
+    "area": "Online",
+    "store": "Walmart",
+    "product": "Pokémon TCG: Scarlet & Violet—Prismatic Evolutions Tech Sticker Collection",
+    "url": "https://www.walmart.com/ip/14191660941",
+    "msrp": null,
+    "max_markup": 80,
+    "priority": "normal",
+    "set_name": "Prismatic Evolutions",
+    "product_type": "collection",
+    "packs": null,
+    "official_seller_only": true
   }
 ]
