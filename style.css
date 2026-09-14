@@ -101,3 +101,8 @@ main{max-width:760px;padding:14px 16px 28px}.radar-hero{display:none}.radar-snap
 #googleSignIn{position:relative;min-height:48px;margin:12px 0}
 #googleSignIn>div{position:relative;z-index:2;opacity:0;min-height:48px}
 #googleSignIn:after{content:"Sign in";position:absolute;inset:0;display:grid;place-items:center;border:1px solid rgba(32,214,210,.38);border-radius:13px;background:linear-gradient(135deg,rgba(32,214,210,.18),rgba(77,141,255,.22));color:var(--text);font-weight:850;pointer-events:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}
+
+
+/* Subtle TCG Radar watermark, sized to stay readable on phones */
+body:before{content:"";position:fixed;z-index:0;right:-22px;bottom:21vh;width:min(42vw,250px);height:min(42vw,250px);background:url("icon-radar-v2.svg") center/contain no-repeat;opacity:.075;filter:drop-shadow(0 0 22px rgba(32,214,210,.28));pointer-events:none}
+body:after{left:50%;bottom:14vh;transform:translateX(-50%) rotate(-16deg);font-size:clamp(1.05rem,4.15vw,1.8rem);letter-spacing:.075em;color:rgba(32,214,210,.075)}
