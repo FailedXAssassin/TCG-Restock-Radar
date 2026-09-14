@@ -133,16 +133,35 @@ $("#closeOwnerBtn").addEventListener("click",()=>$("#ownerDialog").close());
 $("#testPushBtn").addEventListener("click",async()=>{ $("#ownerMessage").textContent="Test scheduled—close TCG Radar completely now."; try{const result=await ownerFetch("/api/admin/push/test",{method:"POST"}); $("#ownerMessage").textContent=result.attempted?"Test scheduled for 10 seconds. Close TCG Radar completely now.":"No phones are subscribed yet—tap Enable Push Alerts on the main screen first.";}catch(error){$("#ownerMessage").textContent=error.message;} });
 $("#productForm").addEventListener("submit",async event=>{event.preventDefault(); $("#ownerMessage").textContent="Saving product…"; try{await ownerFetch("/api/admin/products",{method:"POST",body:JSON.stringify({product:$("#ownerProduct").value,url:$("#ownerUrl").value,game:$("#ownerGame").value,msrp:$("#ownerMsrp").value||null,priority:$("#ownerPriority").value,max_markup:$("#ownerMaxMarkup").value||80,area:"Online"})}); event.target.reset(); await showOwner(); loadFeed();}catch(error){$("#ownerMessage").textContent=error.message;}});
 
+const PERSONAL_MARKUP_KEY="tcg-radar-personal-markup";
+function personalMarkup(){ return Number(localStorage.getItem(PERSONAL_MARKUP_KEY)||80); }
 function base64UrlToBytes(value){ const padded=value.replace(/-/g,"+").replace(/_/g,"/")+"=".repeat((4-value.length%4)%4); const raw=atob(padded); return Uint8Array.from(raw,c=>c.charCodeAt(0)); }
+async function savePushSubscription(subscription){
+  const response=await fetch(api("/api/push/subscribe"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({subscription,preferences:{max_markup:personalMarkup()}})});
+  if(!response.ok){ const data=await response.json().catch(()=>({})); throw new Error(data.detail||"Could not save this device for alerts"); }
+}
+async function enablePush(){
+  const config=await fetch(api("/api/push/config"),{cache:"no-store"}).then(r=>r.json());
+  if(!config.enabled) throw new Error("Push alerts are still being set up");
+  if(!("serviceWorker" in navigator)||!("PushManager" in window)) throw new Error("This browser does not support push alerts");
+  const permission=await Notification.requestPermission();
+  if(permission!=="granted") throw new Error("Notification permission was not granted");
+  const registration=await navigator.serviceWorker.ready;
+  const existing=await registration.pushManager.getSubscription();
+  const subscription=existing||await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:base64UrlToBytes(config.public_key)});
+  await savePushSubscription(subscription);
+  return subscription;
+}
 async function loadPush(){
   const button=$("#notifyBtn");
   try{ const config=await fetch(api("/api/push/config"),{cache:"no-store"}).then(r=>r.json());
     if(!config.enabled){ button.textContent="Push alerts: setup pending"; button.disabled=true; return; }
     button.textContent=Notification.permission==="granted"?"Push alerts enabled":"Enable Push Alerts"; button.disabled=false;
-    button.onclick=async()=>{ try{ if(!("serviceWorker" in navigator)||!("PushManager" in window)) throw new Error("This browser does not support push alerts"); const permission=await Notification.requestPermission(); if(permission!=="granted") throw new Error("Notification permission was not granted"); const registration=await navigator.serviceWorker.ready; const existing=await registration.pushManager.getSubscription(); const subscription=existing||await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:base64UrlToBytes(config.public_key)}); const response=await fetch(api("/api/push/subscribe"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(subscription)}); if(!response.ok) throw new Error("Could not save this device for alerts"); button.textContent="Push alerts enabled"; }catch(error){ alert(error.message); } };
+    button.onclick=async()=>{ try{ await enablePush(); button.textContent="Push alerts enabled"; }catch(error){ alert(error.message); } };
   }catch(error){ button.textContent="Push alerts unavailable"; button.disabled=true; }
 }
-
+$("#alertSettingsBtn").addEventListener("click",()=>{ $("#personalMarkup").value=String(personalMarkup()); $("#alertSettingsMessage").textContent=""; $("#alertSettingsDialog").showModal(); });
+$("#alertSettingsForm").addEventListener("submit",async event=>{ event.preventDefault(); localStorage.setItem(PERSONAL_MARKUP_KEY,$("#personalMarkup").value); try{ const registration=await navigator.serviceWorker.ready; const subscription=await registration.pushManager.getSubscription(); if(subscription) await savePushSubscription(subscription); $("#alertSettingsMessage").textContent="Saved for this phone."; setTimeout(()=>$("#alertSettingsDialog").close(),500); }catch(error){ $("#alertSettingsMessage").textContent=`Saved here. ${error.message}`; } });
 
 window.addEventListener("beforeinstallprompt",e=>{
   e.preventDefault(); deferredPrompt=e; $("#installBtn").hidden=false;

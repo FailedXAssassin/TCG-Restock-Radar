@@ -108,6 +108,7 @@
     <section class="actions">
       <button id="refreshBtn">Refresh</button>
       <button id="notifyBtn" class="secondary">Enable Notifications</button>
+      <button id="alertSettingsBtn" class="secondary">Alert Settings</button>
       <button id="ownerBtn" class="secondary">Owner Tools</button>
     </section>
 
@@ -132,6 +133,24 @@
     </form>
   </dialog>
 
+
+  <dialog id="alertSettingsDialog">
+    <form method="dialog" class="dialog-card" id="alertSettingsForm">
+      <div class="dialog-title"><h2>My alert settings</h2><button value="cancel" class="secondary">Close</button></div>
+      <p class="muted">Choose the highest price markup that can alert this phone. Your setting does not affect anyone else.</p>
+      <label for="personalMarkup">Alert only when a confirmed price is</label>
+      <select id="personalMarkup">
+        <option value="0">MSRP or less</option>
+        <option value="20">20% or less above MSRP</option>
+        <option value="40">40% or less above MSRP</option>
+        <option value="80" selected>80% or less above MSRP</option>
+        <option value="200">200% or less above MSRP</option>
+        <option value="999">Any confirmed price</option>
+      </select>
+      <p id="alertSettingsMessage" class="muted"></p>
+      <div class="dialog-actions"><button id="saveAlertSettingsBtn" value="default">Save alert settings</button></div>
+    </form>
+  </dialog>
 
   <dialog id="ownerDialog">
     <div class="dialog-card">

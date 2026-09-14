@@ -285,6 +285,14 @@ def _valid_subscription(subscription):
     return isinstance(keys, dict) and bool(keys.get("p256dh") and keys.get("auth"))
 
 
+def _clean_push_preferences(payload):
+    payload = payload if isinstance(payload, dict) else {}
+    max_markup = safe_float(payload.get("max_markup"), 80)
+    if max_markup is None or max_markup < 0 or max_markup > 999:
+        raise HTTPException(status_code=422, detail="Alert markup must be between 0 and 999 percent")
+    return {"max_markup": max_markup}
+
+
 def _send_web_push(subscription, payload):
     from pywebpush import WebPushException, webpush
     try:
@@ -309,11 +317,7 @@ async def notify_transition(item):
     meaningful = {("unknown", "loaded"), ("loaded", "in_stock"), ("sold_out", "in_stock"), ("unknown", "in_stock")}
     if (previous, current) not in meaningful:
         return
-    max_markup = safe_float(item.get("max_markup"), 80)
     markup = safe_float(item.get("markup"))
-    if current == "in_stock" and markup is not None and max_markup is not None and markup > max_markup:
-        print(f"Skipping overpriced alert for {item.get('product')}: {markup}% > {max_markup}%")
-        return
     payload = {
         "title": "TCG Radar alert",
         "body": f"{item.get('product')} is now {current.replace('_', ' ')} at {item.get('store')}",
@@ -322,6 +326,9 @@ async def notify_transition(item):
     }
     expired = []
     for subscription in _subscriptions():
+        preference = _clean_push_preferences(subscription.get("preferences"))
+        if current == "in_stock" and markup is not None and markup > preference["max_markup"]:
+            continue
         if await asyncio.to_thread(_send_web_push, subscription, payload):
             expired.append(subscription.get("endpoint"))
     if expired:
@@ -1057,17 +1064,19 @@ async def push_config():
 
 
 @app.post("/api/push/subscribe", status_code=201)
-async def subscribe_push(subscription: dict):
+async def subscribe_push(payload: dict):
     if not push_ready():
         raise HTTPException(status_code=503, detail="Push alerts are not configured yet")
+    subscription = payload.get("subscription", payload)
     if not _valid_subscription(subscription):
         raise HTTPException(status_code=422, detail="Browser push subscription is incomplete")
+    preferences = _clean_push_preferences(payload.get("preferences"))
     subscriptions = _subscriptions()
     endpoint = subscription["endpoint"]
     subscriptions = [item for item in subscriptions if item.get("endpoint") != endpoint]
-    subscriptions.append(subscription)
+    subscriptions.append({**subscription, "preferences": preferences})
     _write_subscriptions(subscriptions)
-    return {"subscribed": True}
+    return {"subscribed": True, "preferences": preferences}
 
 
 async def _broadcast_test_push():

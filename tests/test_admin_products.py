@@ -33,6 +33,12 @@ class AdminProductTests(unittest.TestCase):
         self.assertTrue(server._valid_subscription({"endpoint": "https://push.example/1", "keys": {"p256dh": "key", "auth": "auth"}}))
         self.assertFalse(server._valid_subscription({"endpoint": "http://push.example/1", "keys": {}}))
 
+    def test_push_preferences_default_and_validation(self):
+        self.assertEqual(server._clean_push_preferences({}), {"max_markup": 80})
+        self.assertEqual(server._clean_push_preferences({"max_markup": "20"}), {"max_markup": 20.0})
+        with self.assertRaises(HTTPException):
+            server._clean_push_preferences({"max_markup": -1})
+
     def test_push_ready_requires_key_pair(self):
         with patch.object(server, "VAPID_PUBLIC_KEY", "public"), patch.object(server, "VAPID_PRIVATE_KEY", "private"):
             self.assertTrue(server.push_ready())
