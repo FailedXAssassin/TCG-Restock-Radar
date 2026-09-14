@@ -99,7 +99,7 @@ function render(){
   $("#activeCount").textContent=rows.length;
   const newestConfirmed=confirmed.sort((a,b)=>new Date(b.notification_at||b.checked_at||0)-new Date(a.notification_at||a.checked_at||0))[0];
   $("#latestVerified").textContent=newestConfirmed ? `${newestConfirmed.store}: ${newestConfirmed.product}` : "No confirmed retail stock";
-  if(!filtered.length) $("#results").innerHTML=`<div class="status card">${viewMode==="local"?"No nearby products with confirmed local inventory are available yet.":"No drops match the current filters."}</div>`;
+  if(!filtered.length) $("#results").innerHTML=`<div class="status card">${viewMode==="local"?"No confirmed nearby stock yet. We keep it unknown instead of guessing.":"Nothing matches these filters yet. Try a higher markup limit, more retailers, or another game."}</div>`;
 }
 
 function setMode(mode){
@@ -364,6 +364,10 @@ $("#closeSettingsBtn").addEventListener("click",closeSettings);
 $("#settingsScrim").addEventListener("click",closeSettings);
 $("#themeToggle").addEventListener("click",()=>{const next=document.body.classList.contains("light-mode")?"dark":"light";localStorage.setItem(THEME_KEY,next);applyTheme(next);});
 
+
+$("#statusHelpBtn").addEventListener("click",()=>$("#statusHelpDialog").showModal());
+$("#closeStatusHelpBtn").addEventListener("click",()=>$("#statusHelpDialog").close());
+$("#startSetupBtn").addEventListener("click",()=>{openSettings();$("#welcomeGuide").open=false;});
 
 const WELCOME_GUIDE_KEY="tcg-radar-welcome-guide-dismissed";
 if(localStorage.getItem(WELCOME_GUIDE_KEY)) $("#welcomeGuide").hidden=true;
