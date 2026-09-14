@@ -100,6 +100,47 @@ def retailer_name(url, fallback="Unknown"):
     return fallback or "Unknown"
 
 
+VERIFIED_PRODUCT_HOSTS = {
+    "walmart.com",
+    "target.com",
+    "bestbuy.com",
+    "gamestop.com",
+    "amazon.com",
+    "costco.com",
+    "samsclub.com",
+    "cvs.com",
+    "walgreens.com",
+}
+
+VERIFIED_PRODUCT_PATHS = {
+    "walmart.com": re.compile(r"/ip/(?:[^/?]+/)?\\d+", re.I),
+    "target.com": re.compile(r"/(?:p/)?(?:[^/?]+/)?-?/A-\\d+", re.I),
+    "bestbuy.com": re.compile(r"/(?:site|product)/", re.I),
+    "gamestop.com": re.compile(r"/(?:products?|p)/", re.I),
+    "amazon.com": re.compile(r"/(?:dp|gp/product)/", re.I),
+    "costco.com": re.compile(r"/(?:.*/)?p/\\d+", re.I),
+    "samsclub.com": re.compile(r"/s/", re.I),
+    "cvs.com": re.compile(r"/shop/p/", re.I),
+    "walgreens.com": re.compile(r"/store/c/", re.I),
+}
+
+
+def verified_product_url(url):
+    """Accept only stable official retailer product pages."""
+    try:
+        parsed = urlparse(str(url).strip())
+        host = parsed.netloc.lower().split("@")[-1].split(":")[0]
+        if host.startswith("www."):
+            host = host[4:]
+        if parsed.scheme != "https" or host not in VERIFIED_PRODUCT_HOSTS:
+            return False
+        if not parsed.path or not VERIFIED_PRODUCT_PATHS[host].search(parsed.path):
+            return False
+        return True
+    except Exception:
+        return False
+
+
 def interval_for(source):
     """
     High priority:
@@ -146,7 +187,7 @@ def load_sources():
 
         url = str(source.get("url", "")).strip()
 
-        if not url.startswith(("http://", "https://")):
+        if not verified_product_url(url):
             continue
 
         valid.append(source)
@@ -235,8 +276,11 @@ def _clean_source(payload):
     if not isinstance(payload, dict):
         raise HTTPException(status_code=422, detail="Product data must be an object")
     url = str(payload.get("url", "")).strip()
-    if not url.startswith(("https://", "http://")):
-        raise HTTPException(status_code=422, detail="A public product URL is required")
+    if not verified_product_url(url):
+        raise HTTPException(
+            status_code=422,
+            detail="Use a stable HTTPS product page from an approved official retailer",
+        )
     product = str(payload.get("product", "")).strip()
     if not product:
         raise HTTPException(status_code=422, detail="Product name is required")
