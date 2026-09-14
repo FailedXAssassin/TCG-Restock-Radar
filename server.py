@@ -26,6 +26,7 @@ ADMIN_SECRET = os.environ.get("TCG_RADAR_ADMIN_SECRET", "")
 VAPID_PUBLIC_KEY = os.environ.get("TCG_RADAR_VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = os.environ.get("TCG_RADAR_VAPID_PRIVATE_KEY", "")
 VAPID_CONTACT = os.environ.get("TCG_RADAR_VAPID_CONTACT", "mailto:owner@example.com")
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 USER_AGENT = (
     "Mozilla/5.0 (Linux; Android 16) "
@@ -140,14 +141,31 @@ def load_sources():
 
 
 
-def ensure_data_files():
-    """Seed a newly attached empty volume from the checked-in starter list."""
-    if not SOURCES_FILE.exists() and DEFAULT_SOURCES_FILE.exists():
-        SOURCES_FILE.parent.mkdir(parents=True, exist_ok=True)
-        SOURCES_FILE.write_text(DEFAULT_SOURCES_FILE.read_text(encoding="utf-8"), encoding="utf-8")
+
+def database_enabled():
+    return bool(DATABASE_URL)
 
 
-def _all_sources():
+def _database_connection():
+    import psycopg
+    return psycopg.connect(DATABASE_URL)
+
+
+def ensure_database():
+    if not database_enabled():
+        return
+    with _database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("CREATE TABLE IF NOT EXISTS radar_products (id TEXT PRIMARY KEY, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cursor.execute("CREATE TABLE IF NOT EXISTS push_subscriptions (endpoint TEXT PRIMARY KEY, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cursor.execute("SELECT COUNT(*) FROM radar_products")
+            if cursor.fetchone()[0] == 0:
+                for source in _file_sources():
+                    cursor.execute("INSERT INTO radar_products (id, payload) VALUES (%s, %s::jsonb)", (source_id(source), json.dumps(source)))
+        connection.commit()
+
+
+def _file_sources():
     if not SOURCES_FILE.exists():
         return []
     try:
@@ -157,7 +175,31 @@ def _all_sources():
         return []
 
 
+def ensure_data_files():
+    """Seed a newly attached empty volume from the checked-in starter list."""
+    if not SOURCES_FILE.exists() and DEFAULT_SOURCES_FILE.exists():
+        SOURCES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        SOURCES_FILE.write_text(DEFAULT_SOURCES_FILE.read_text(encoding="utf-8"), encoding="utf-8")
+
+
+def _all_sources():
+    if not database_enabled():
+        return _file_sources()
+    with _database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT payload FROM radar_products ORDER BY updated_at, id")
+            return [row[0] for row in cursor.fetchall()]
+
+
 def _write_sources(sources):
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM radar_products")
+                for source in sources:
+                    cursor.execute("INSERT INTO radar_products (id, payload) VALUES (%s, %s::jsonb)", (source_id(source), json.dumps(source)))
+            connection.commit()
+        return
     temporary = SOURCES_FILE.with_suffix(".tmp")
     temporary.write_text(json.dumps(sources, indent=2) + "\n", encoding="utf-8")
     temporary.replace(SOURCES_FILE)
@@ -201,6 +243,11 @@ def require_admin(authorization=Header(default="")):
 
 
 def _subscriptions():
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT payload FROM push_subscriptions ORDER BY updated_at, endpoint")
+                return [row[0] for row in cursor.fetchall()]
     if not PUSH_SUBSCRIPTIONS_FILE.exists():
         return []
     try:
@@ -211,6 +258,14 @@ def _subscriptions():
 
 
 def _write_subscriptions(subscriptions):
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM push_subscriptions")
+                for subscription in subscriptions:
+                    cursor.execute("INSERT INTO push_subscriptions (endpoint, payload) VALUES (%s, %s::jsonb)", (subscription["endpoint"], json.dumps(subscription)))
+            connection.commit()
+        return
     temporary = PUSH_SUBSCRIPTIONS_FILE.with_suffix(".tmp")
     temporary.write_text(json.dumps(subscriptions, indent=2) + "\n", encoding="utf-8")
     temporary.replace(PUSH_SUBSCRIPTIONS_FILE)
@@ -795,6 +850,7 @@ async def lifespan(app: FastAPI):
     global http_client
 
     ensure_data_files()
+    ensure_database()
     http_client = httpx.AsyncClient(
         follow_redirects=True,
     )
@@ -814,7 +870,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="TCG Radar API",
-    version="3.3.1",
+    version="3.4.0",
     lifespan=lifespan,
 )
 
@@ -834,7 +890,7 @@ app.add_middleware(
 async def root():
     return {
         "name": "TCG Radar",
-        "version": "3.3.1",
+        "version": "3.4.0",
         "status": "online",
         "message": "TCG Radar backend is running.",
     }
@@ -846,7 +902,7 @@ async def health():
 
     return {
         "status": "online",
-        "version": "3.3.1",
+        "version": "3.4.0",
         "time": now_iso(),
         "configured_products": len(
             sources
@@ -857,6 +913,7 @@ async def health():
         "retailers": len(
             retailer_health
         ),
+        "persistent_storage": "postgres" if database_enabled() else ("volume" if "RAILWAY_VOLUME_MOUNT_PATH" in os.environ else "ephemeral"),
     }
 
 

@@ -523,3 +523,9 @@ or expensive alert subscriptions.**
 - Owner UI is phone-friendly and stores the entered owner secret only in browser session storage.
 - `TCG_RADAR_ADMIN_SECRET` must be set in Railway before these controls can operate. Until then endpoints return a deliberate configuration message rather than allowing unauthenticated changes.
 - Current JSON product file is functional for testing but is not durable across Railway redeployments without a persistent mounted volume. Do not claim closed-app alerts or persistent subscriptions are ready yet.
+
+### 2026-09-14 — PostgreSQL fallback for mobile setup
+
+- Railway's volume attachment wizard did not function with touch input on the user's Android phone, including desktop-site mode.
+- Added optional `DATABASE_URL` support using PostgreSQL. When present, monitored products and Web Push subscriptions are stored in PostgreSQL; current JSON files remain the fallback for local/testing use.
+- A new empty database seeds itself from the starter product list on first application startup.
