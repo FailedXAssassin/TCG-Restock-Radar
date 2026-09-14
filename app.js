@@ -9,7 +9,7 @@ const API_BASE = location.hostname.endsWith("github.io")
   : "";
 
 const statusLabels = {
-  in_stock:"🟢 Confirmed retail stock", marketplace_in_stock:"🟠 Marketplace stock",
+  in_stock:"🟢 Confirmed retail stock", marketplace_in_stock:"🟠 Third-party seller",
   loaded:"🟡 Listing live — stock unconfirmed", invitation:"🟣 Invite / access required",
   sold_out:"🔴 Sold out", unknown:"⚪ Availability unknown",
   blocked:"⚫ Retailer blocked the check", error:"⚫ Check needs retry", not_found:"⚫ Listing not found"
