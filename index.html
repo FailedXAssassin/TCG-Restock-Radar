@@ -250,8 +250,10 @@
       <form id="productForm" class="product-form">
         <input id="ownerProduct" required placeholder="Product name" />
         <input id="ownerUrl" required type="url" placeholder="Official retailer product URL" />
-        <div class="form-grid"><select id="ownerGame"><option>Pokemon</option><option>One Piece</option><option>Magic</option><option>Other</option></select><input id="ownerMsrp" type="number" min="0.01" step="0.01" placeholder="MSRP (optional)" /></div>
-        <div class="form-grid"><select id="ownerPriority"><option value="high">High priority</option><option value="normal" selected>Normal priority</option><option value="low">Low priority</option></select><input id="ownerMaxMarkup" type="number" min="0" max="1000" step="1" value="80" placeholder="Maximum markup %" /></div>
+        <div class="form-grid"><select id="ownerGame"><option>Pokemon</option><option>One Piece</option><option>Magic</option><option>Other</option></select><input id="ownerSet" maxlength="100" placeholder="Set (example: Prismatic Evolutions)" /></div>
+        <div class="form-grid"><select id="ownerProductType"><option value="elite_trainer_box">Elite Trainer Box</option><option value="booster_bundle">Booster Bundle</option><option value="booster_box">Booster Box</option><option value="booster_pack">Booster Pack</option><option value="three_pack_blister">3-Pack Blister</option><option value="tin">Tin</option><option value="collection">Collection</option><option value="premium_collection">Premium Collection</option><option value="ultra_premium_collection">Ultra-Premium Collection</option><option value="build_and_battle">Build & Battle</option><option value="deck">Deck with packs</option><option value="other_pack_product">Other pack product</option></select><input id="ownerPacks" type="number" min="1" max="1000" step="1" placeholder="Pack count (optional)" /></div>
+        <div class="form-grid"><input id="ownerMsrp" type="number" min="0.01" step="0.01" placeholder="MSRP (optional)" /><select id="ownerPriority"><option value="high">High priority</option><option value="normal" selected>Normal priority</option><option value="low">Low priority</option></select></div>
+        <input id="ownerMaxMarkup" type="number" min="0" max="1000" step="1" value="80" placeholder="Maximum markup %" />
         <button type="submit">Add Product</button>
       </form>
       </details>
@@ -292,7 +294,7 @@
     <article class="drop card">
       <img class="product-image" alt="" loading="lazy" />
       <div class="drop-main">
-        <div class="drop-tags"><span class="badge game"></span><span class="badge area"></span></div>
+        <div class="drop-tags"><span class="badge game"></span><span class="badge set"></span><span class="badge product-type"></span></div>
         <h3 class="product"></h3>
         <div class="status-row"><span class="badge product-status"></span><span class="seller"></span></div>
         <p class="store"></p>
