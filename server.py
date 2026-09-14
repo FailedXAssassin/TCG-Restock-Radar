@@ -870,7 +870,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="TCG Radar API",
-    version="3.4.1",
+    version="3.4.2",
     lifespan=lifespan,
 )
 
@@ -881,7 +881,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=False,
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -890,7 +890,7 @@ app.add_middleware(
 async def root():
     return {
         "name": "TCG Radar",
-        "version": "3.4.1",
+        "version": "3.4.2",
         "status": "online",
         "message": "TCG Radar backend is running.",
     }
@@ -902,7 +902,7 @@ async def health():
 
     return {
         "status": "online",
-        "version": "3.4.1",
+        "version": "3.4.2",
         "time": now_iso(),
         "configured_products": len(
             sources
