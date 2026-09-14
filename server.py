@@ -18,8 +18,10 @@ from parsers import PARSER_VERSION, parse_target, parse_walmart
 
 
 ROOT = Path(__file__).resolve().parent
-SOURCES_FILE = Path(os.environ.get("TCG_RADAR_DATA_PATH", ROOT / "sources.json"))
-PUSH_SUBSCRIPTIONS_FILE = Path(os.environ.get("TCG_RADAR_PUSH_SUBSCRIPTIONS_PATH", SOURCES_FILE.parent / "push_subscriptions.json"))
+DEFAULT_SOURCES_FILE = ROOT / "sources.json"
+DATA_DIR = Path(os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", ROOT))
+SOURCES_FILE = Path(os.environ.get("TCG_RADAR_DATA_PATH", DATA_DIR / "sources.json"))
+PUSH_SUBSCRIPTIONS_FILE = Path(os.environ.get("TCG_RADAR_PUSH_SUBSCRIPTIONS_PATH", DATA_DIR / "push_subscriptions.json"))
 ADMIN_SECRET = os.environ.get("TCG_RADAR_ADMIN_SECRET", "")
 VAPID_PUBLIC_KEY = os.environ.get("TCG_RADAR_VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = os.environ.get("TCG_RADAR_VAPID_PRIVATE_KEY", "")
@@ -135,6 +137,14 @@ def load_sources():
 
     return valid
 
+
+
+
+def ensure_data_files():
+    """Seed a newly attached empty volume from the checked-in starter list."""
+    if not SOURCES_FILE.exists() and DEFAULT_SOURCES_FILE.exists():
+        SOURCES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        SOURCES_FILE.write_text(DEFAULT_SOURCES_FILE.read_text(encoding="utf-8"), encoding="utf-8")
 
 
 def _all_sources():
@@ -784,6 +794,7 @@ async def lifespan(app: FastAPI):
     global scheduler_task
     global http_client
 
+    ensure_data_files()
     http_client = httpx.AsyncClient(
         follow_redirects=True,
     )
@@ -803,7 +814,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="TCG Radar API",
-    version="3.3.0",
+    version="3.3.1",
     lifespan=lifespan,
 )
 
@@ -823,7 +834,7 @@ app.add_middleware(
 async def root():
     return {
         "name": "TCG Radar",
-        "version": "3.3.0",
+        "version": "3.3.1",
         "status": "online",
         "message": "TCG Radar backend is running.",
     }
@@ -835,7 +846,7 @@ async def health():
 
     return {
         "status": "online",
-        "version": "3.3.0",
+        "version": "3.3.1",
         "time": now_iso(),
         "configured_products": len(
             sources
