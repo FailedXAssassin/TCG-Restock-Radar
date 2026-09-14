@@ -135,3 +135,5 @@ body:before{right:50%;bottom:12vh;transform:translateX(50%);width:min(82vw,460px
 .guide-actions{display:flex;gap:8px;padding:0 16px 15px}.guide-actions button{margin:0!important}.status-guide{display:grid;gap:10px;margin-top:16px}.status-guide p{display:grid;gap:3px;margin:0;padding:11px;border:1px solid var(--line);border-radius:12px;background:rgba(8,16,29,.48)}.status-guide span{font-size:.8rem;color:var(--muted)}.status-guide .good{color:var(--good)}.status-guide .warn{color:var(--warn)}.status-guide .market{color:#fb923c}
 
 .watch{padding:8px 9px;border-radius:10px;font-size:1rem}.watch.watched{color:#f6c453;border-color:rgba(246,196,83,.6);background:rgba(246,196,83,.12)}
+
+.local-results{grid-column:1/-1;margin-top:4px}
