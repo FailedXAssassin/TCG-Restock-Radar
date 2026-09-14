@@ -220,6 +220,9 @@ def _clean_source(payload):
     priority = str(payload.get("priority", "normal")).lower()
     if priority not in {"high", "normal", "low"}:
         raise HTTPException(status_code=422, detail="Priority must be high, normal, or low")
+    max_markup = safe_float(payload.get("max_markup"), 80)
+    if max_markup is None or max_markup < 0 or max_markup > 1000:
+        raise HTTPException(status_code=422, detail="Maximum markup must be between 0 and 1000 percent")
     return {
         "enabled": bool(payload.get("enabled", True)),
         "game": str(payload.get("game", "Other")).strip() or "Other",
@@ -228,7 +231,7 @@ def _clean_source(payload):
         "product": product,
         "url": url,
         "msrp": msrp,
-        "max_markup": safe_float(payload.get("max_markup"), 80),
+        "max_markup": max_markup,
         "priority": priority,
     }
 

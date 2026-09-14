@@ -24,6 +24,7 @@ function render(){
   const game=$("#gameFilter").value, area=$("#areaFilter").value;
   const retailer=$("#retailerFilter").value, status=$("#statusFilter").value;
   const maxMarkup=Number($("#markupFilter").value);
+  const minQuantity=Number($("#quantityFilter").value);
   const q=$("#searchInput").value.trim().toLowerCase();
 
   const filtered=rows.filter(x=>{
@@ -33,6 +34,7 @@ function render(){
            (retailer==="all"||x.store===retailer) &&
            (status==="all"||x.status===status) &&
            (m==null||m<=maxMarkup) &&
+           (minQuantity===0||Number(x.quantity||0)>=minQuantity) &&
            (!q||`${x.product} ${x.store} ${x.game} ${x.area}`.toLowerCase().includes(q));
   });
 
@@ -95,7 +97,7 @@ async function loadHealth(){
   }catch(err){$("#healthGrid").innerHTML=`<div class="status card">Retailer health unavailable: ${err.message}</div>`}
 }
 
-["gameFilter","areaFilter","retailerFilter","statusFilter","markupFilter","searchInput"].forEach(id=>$("#"+id).addEventListener("input",render));
+["gameFilter","areaFilter","retailerFilter","statusFilter","markupFilter","quantityFilter","searchInput"].forEach(id=>$("#"+id).addEventListener("input",render));
 $("#refreshBtn").addEventListener("click",loadFeed);
 const ADMIN_KEY="tcg-radar-owner-secret";
 function api(path){ return `${API_BASE}${path.replace(/^\//,"")}`; }
@@ -114,12 +116,22 @@ async function showOwner(){
 }
 function renderOwnerProducts(items){
   $("#ownerProducts").innerHTML="";
-  for(const item of items){ const el=document.createElement("div"); el.className="owner-product"; el.innerHTML=`<span><strong></strong><small></small></span><button type="button">Remove</button>`; el.querySelector("strong").textContent=item.product; el.querySelector("small").textContent=`${item.store} • ${item.priority} priority`; el.querySelector("button").onclick=async()=>{if(!confirm(`Remove ${item.product}?`))return; try{await ownerFetch(`/api/admin/products/${item.id}`,{method:"DELETE"}); showOwner(); loadFeed();}catch(error){$("#ownerMessage").textContent=error.message;}}; $("#ownerProducts").appendChild(el); }
+  for(const item of items){
+    const el=document.createElement("div"); el.className="owner-product";
+    el.innerHTML=`<span><strong></strong><small></small></span><div class="product-actions"><button type="button" class="toggle"></button><button type="button" class="remove">Remove</button></div>`;
+    el.querySelector("strong").textContent=item.product;
+    el.querySelector("small").textContent=`${item.store} • ${item.priority} priority • alert at ≤ ${item.max_markup ?? 80}% markup`;
+    const toggle=el.querySelector(".toggle"); toggle.textContent=item.enabled===false?"Resume":"Pause";
+    toggle.classList.toggle("secondary",true);
+    toggle.onclick=async()=>{try{await ownerFetch(`/api/admin/products/${item.id}`,{method:"PATCH",body:JSON.stringify({enabled:item.enabled===false})}); await showOwner(); loadFeed();}catch(error){$("#ownerMessage").textContent=error.message;}};
+    el.querySelector(".remove").onclick=async()=>{if(!confirm(`Remove ${item.product}?`))return; try{await ownerFetch(`/api/admin/products/${item.id}`,{method:"DELETE"}); await showOwner(); loadFeed();}catch(error){$("#ownerMessage").textContent=error.message;}};
+    $("#ownerProducts").appendChild(el);
+  }
 }
 $("#ownerBtn").addEventListener("click",showOwner);
 $("#closeOwnerBtn").addEventListener("click",()=>$("#ownerDialog").close());
 $("#testPushBtn").addEventListener("click",async()=>{ $("#ownerMessage").textContent="Test scheduled—close TCG Radar completely now."; try{const result=await ownerFetch("/api/admin/push/test",{method:"POST"}); $("#ownerMessage").textContent=result.attempted?"Test scheduled for 10 seconds. Close TCG Radar completely now.":"No phones are subscribed yet—tap Enable Push Alerts on the main screen first.";}catch(error){$("#ownerMessage").textContent=error.message;} });
-$("#productForm").addEventListener("submit",async event=>{event.preventDefault(); $("#ownerMessage").textContent="Saving product…"; try{await ownerFetch("/api/admin/products",{method:"POST",body:JSON.stringify({product:$("#ownerProduct").value,url:$("#ownerUrl").value,game:$("#ownerGame").value,msrp:$("#ownerMsrp").value||null,priority:$("#ownerPriority").value,area:"Online"})}); event.target.reset(); await showOwner(); loadFeed();}catch(error){$("#ownerMessage").textContent=error.message;}});
+$("#productForm").addEventListener("submit",async event=>{event.preventDefault(); $("#ownerMessage").textContent="Saving product…"; try{await ownerFetch("/api/admin/products",{method:"POST",body:JSON.stringify({product:$("#ownerProduct").value,url:$("#ownerUrl").value,game:$("#ownerGame").value,msrp:$("#ownerMsrp").value||null,priority:$("#ownerPriority").value,max_markup:$("#ownerMaxMarkup").value||80,area:"Online"})}); event.target.reset(); await showOwner(); loadFeed();}catch(error){$("#ownerMessage").textContent=error.message;}});
 
 function base64UrlToBytes(value){ const padded=value.replace(/-/g,"+").replace(/_/g,"/")+"=".repeat((4-value.length%4)%4); const raw=atob(padded); return Uint8Array.from(raw,c=>c.charCodeAt(0)); }
 async function loadPush(){
