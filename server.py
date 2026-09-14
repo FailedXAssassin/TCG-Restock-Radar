@@ -1219,7 +1219,8 @@ async def feed():
 
 
 @app.get("/api/retailer-health")
-async def retailer_status():
+async def retailer_status(authorization: str = Header(default="")):
+    manager_role(authorization)
     sources = load_sources()
     counts = {}
     for source in sources:
