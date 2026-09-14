@@ -66,7 +66,8 @@ function render(){
            (!q||`${x.product} ${x.store} ${x.game} ${x.area}`.toLowerCase().includes(q));
   });
 
-  $("#results").innerHTML="";
+  const resultContainer=viewMode==="local"?$("#localResults"):$("#results");
+  resultContainer.innerHTML="";
   const tpl=$("#itemTemplate");
   for(const item of filtered){
     const node=tpl.content.cloneNode(true);
@@ -97,7 +98,7 @@ function render(){
     if(initialFeedRendered&&alertKey&&!seen.has(alertKey)) node.querySelector(".drop").classList.add("is-new");
     if(alertKey) seen.add(alertKey);
     localStorage.setItem(SEEN_ALERTS_KEY,JSON.stringify([...seen].slice(-200)));
-    $("#results").appendChild(node);
+    resultContainer.appendChild(node);
   }
   initialFeedRendered=true;
   $("#resultCount").textContent=filtered.length;
@@ -107,7 +108,7 @@ function render(){
   $("#activeCount").textContent=rows.length;
   const newestConfirmed=confirmed.sort((a,b)=>new Date(b.notification_at||b.checked_at||0)-new Date(a.notification_at||a.checked_at||0))[0];
   $("#latestVerified").textContent=newestConfirmed ? `${newestConfirmed.store}: ${newestConfirmed.product}` : "No confirmed retail stock";
-  if(!filtered.length) $("#results").innerHTML=`<div class="status card">${viewMode==="local"?"No confirmed nearby stock yet. We keep it unknown instead of guessing.":"Nothing matches these filters yet. Try a higher markup limit, more retailers, or another game."}</div>`;
+  if(!filtered.length) resultContainer.innerHTML=`<div class="status card">${viewMode==="local"?"No confirmed nearby stock yet. We keep it unknown instead of guessing.":"Nothing matches these filters yet. Try a higher markup limit, more retailers, or another game."}</div>`;
 }
 
 function setMode(mode){
