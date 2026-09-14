@@ -529,3 +529,10 @@ or expensive alert subscriptions.**
 - Railway's volume attachment wizard did not function with touch input on the user's Android phone, including desktop-site mode.
 - Added optional `DATABASE_URL` support using PostgreSQL. When present, monitored products and Web Push subscriptions are stored in PostgreSQL; current JSON files remain the fallback for local/testing use.
 - A new empty database seeds itself from the starter product list on first application startup.
+
+### 2026-09-14 — Retailer-direct reliability and verified-link hardening
+
+- Walmart structured parsing now remains `unknown` when usable structured offer data is unavailable; loose page-wide fallback text cannot create a Marketplace result.
+- Product monitoring and owner product CRUD now accept only HTTPS product pages on approved official retailer domains with retailer-specific stable product-path patterns.
+- Shortened links, guessed cart URLs, arbitrary hosts, and marketplace URLs are rejected or ignored.
+- Existing two-check confirmation, official-seller verification, and respectful backoff rules remain unchanged.
