@@ -26,6 +26,16 @@ function money(n){
   if(n==null) return "—";
   return new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(Number(n)||0);
 }
+function timeAgo(value){
+  const seconds=Math.max(0,Math.floor((Date.now()-new Date(value).getTime())/1000));
+  if(seconds<45) return "just now";
+  const minutes=Math.floor(seconds/60);
+  if(minutes<60) return `${minutes} min${minutes===1?"":"s"}`;
+  const hours=Math.floor(minutes/60);
+  if(hours<24) return `${hours} hour${hours===1?"":"s"}`;
+  const days=Math.floor(hours/24);
+  return `${days} day${days===1?"":"s"}`;
+}
 function retailerHref(item){
   const packages={"Amazon":"com.amazon.mShop.android.shopping","Walmart":"com.walmart.android","Target":"com.target.ui","Best Buy":"com.bestbuy.android"};
   if(!/Android/i.test(navigator.userAgent)||!packages[item.store]||!item.url) return item.url||"#";
@@ -69,7 +79,8 @@ function render(){
     el.textContent=m==null?"—":`${m>=0?"+":""}${m.toFixed(0)}%`;
     if(m!=null) el.classList.add(m<=0?"good":m<=40?"warn":"bad");
     node.querySelector(".evidence").textContent=item.evidence||"";
-    node.querySelector(".checked").textContent=item.notification_at?`🔔 Last notification ${new Date(item.notification_at).toLocaleString()} • checked ${item.checked_at?new Date(item.checked_at).toLocaleTimeString():"—"}`:item.checked_at?`Last checked ${new Date(item.checked_at).toLocaleString()}`:"";
+    const addedAt=item.notification_at||item.created_at||item.added_at;
+    node.querySelector(".checked").textContent=addedAt?`Added ${timeAgo(addedAt)==="just now"?"just now":timeAgo(addedAt)+" ago"}`:"";
     const buy=node.querySelector(".buy"); buy.href=retailerHref(item); buy.textContent=/Android/i.test(navigator.userAgent)&&["Amazon","Walmart","Target","Best Buy"].includes(item.store)?`Open in ${item.store} app`:`Open ${item.store} listing`;
     node.querySelector(".report").onclick=async()=>{ const reason=prompt("What is wrong? Enter false alert, wrong price, broken link, or other.","false alert"); if(!reason)return; const normalized=reason.trim().toLowerCase().replace(/\s+/g,"_"); const allowed={"false_alert":"false_alert","wrong_price":"wrong_price","broken_link":"broken_link","other":"other"}; try{const response=await fetch(api("/api/reports"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({product_id:item.id,reason:allowed[normalized]||"other"})}); if(!response.ok)throw new Error("Report could not be saved"); alert("Thanks—your report was saved for review.");}catch(error){alert(error.message);} };
     const alertKey=item.notification_at?`${item.id}|${item.notification_at}`:"";
