@@ -29,7 +29,7 @@ ADMIN_SECRET = os.environ.get("TCG_RADAR_ADMIN_SECRET", "")
 VAPID_PUBLIC_KEY = os.environ.get("TCG_RADAR_VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = os.environ.get("TCG_RADAR_VAPID_PRIVATE_KEY", "")
 VAPID_CONTACT = os.environ.get("TCG_RADAR_VAPID_CONTACT", "mailto:owner@example.com")
-GOOGLE_CLIENT_ID = os.environ.get("TCG_RADAR_GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", os.environ.get("TCG_RADAR_GOOGLE_CLIENT_ID", ""))
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 USER_AGENT = (
