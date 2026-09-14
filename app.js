@@ -9,6 +9,7 @@ let deferredPrompt = null;
 let viewMode = "online";
 let activePage = "radar";
 let healthAllowed = false;
+let reportProductId = "";
 let initialFeedRendered = false;
 const SEEN_ALERTS_KEY = "tcg-radar-seen-alerts";
 const visitorId=localStorage.getItem("tcg-radar-visitor")||crypto.randomUUID(); localStorage.setItem("tcg-radar-visitor",visitorId);
@@ -92,7 +93,7 @@ function render(){
     const watch=node.querySelector(".watch"), watched=watchlist().has(item.id);
     watch.textContent=watched?"★":"☆"; watch.classList.toggle("watched",watched); watch.setAttribute("aria-label",watched?"Remove from watchlist":"Add to watchlist");
     watch.onclick=()=>{const items=watchlist();items.has(item.id)?items.delete(item.id):items.add(item.id);saveWatchlist(items);updateWatchlistButton();render();};
-    node.querySelector(".report").onclick=async()=>{ const reason=prompt("What is wrong? Enter false alert, wrong price, broken link, or other.","false alert"); if(!reason)return; const normalized=reason.trim().toLowerCase().replace(/\s+/g,"_"); const allowed={"false_alert":"false_alert","wrong_price":"wrong_price","broken_link":"broken_link","other":"other"}; try{const response=await fetch(api("/api/reports"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({product_id:item.id,reason:allowed[normalized]||"other"})}); if(!response.ok)throw new Error("Report could not be saved"); alert("Thanks—your report was saved for review.");}catch(error){alert(error.message);} };
+    node.querySelector(".report").onclick=()=>{reportProductId=item.id;$("#reportMessage").textContent="";$("#reportDialog").showModal();};
     const alertKey=item.notification_at?`${item.id}|${item.notification_at}`:"";
     const seen=new Set(JSON.parse(localStorage.getItem(SEEN_ALERTS_KEY)||"[]"));
     if(initialFeedRendered&&alertKey&&!seen.has(alertKey)) node.querySelector(".drop").classList.add("is-new");
@@ -377,6 +378,8 @@ $("#settingsScrim").addEventListener("click",closeSettings);
 $("#themeToggle").addEventListener("click",()=>{const next=document.body.classList.contains("light-mode")?"dark":"light";localStorage.setItem(THEME_KEY,next);applyTheme(next);});
 
 
+$("#closeReportBtn").addEventListener("click",()=>$("#reportDialog").close());
+document.querySelectorAll("[data-report]").forEach(button=>button.addEventListener("click",async()=>{if(!reportProductId)return;$("#reportMessage").textContent="Sending…";try{const response=await fetch(api("/api/reports"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({product_id:reportProductId,reason:button.dataset.report})});if(!response.ok)throw new Error("Report could not be saved");$("#reportMessage").textContent="Thanks — it was saved for review.";setTimeout(()=>$("#reportDialog").close(),650);}catch(error){$("#reportMessage").textContent=error.message;}}));
 $("#statusHelpBtn").addEventListener("click",()=>$("#statusHelpDialog").showModal());
 $("#closeStatusHelpBtn").addEventListener("click",()=>$("#statusHelpDialog").close());
 $("#startSetupBtn").addEventListener("click",()=>{openSettings();$("#welcomeGuide").open=false;});
