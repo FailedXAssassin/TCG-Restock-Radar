@@ -181,10 +181,13 @@ def ensure_database():
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_users (google_sub TEXT PRIMARY KEY, email TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_purchases (id TEXT PRIMARY KEY, google_sub TEXT NOT NULL, payload JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_visitors (client_id TEXT PRIMARY KEY, first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(), last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW())")
-            cursor.execute("SELECT COUNT(*) FROM radar_products")
-            if cursor.fetchone()[0] == 0:
-                for source in _file_sources():
-                    cursor.execute("INSERT INTO radar_products (id, payload) VALUES (%s, %s::jsonb)", (source_id(source), json.dumps(source)))
+            # Add new checked-in starter products without overwriting products
+            # added by the owner or moderators.
+            for source in _file_sources():
+                cursor.execute(
+                    "INSERT INTO radar_products (id, payload) VALUES (%s, %s::jsonb) ON CONFLICT (id) DO NOTHING",
+                    (source_id(source), json.dumps(source)),
+                )
         connection.commit()
 
 
