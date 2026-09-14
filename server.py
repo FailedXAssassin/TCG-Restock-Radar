@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import random
 import re
@@ -11,6 +12,7 @@ from urllib.parse import urlparse
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from parsers import PARSER_VERSION, parse_target, parse_walmart
 
 
 ROOT = Path(__file__).resolve().parent
@@ -49,7 +51,7 @@ def source_id(source):
         f"{source.get('product', '')}|"
         f"{source.get('url', '')}"
     )
-    return str(abs(hash(raw)))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
 def retailer_name(url, fallback="Unknown"):
@@ -160,72 +162,6 @@ def extract_price(text):
                 pass
 
     return None
-def detect_walmart_offer(text):
-    page = text.lower()
-
-    seller_debug = re.findall(
-        r'"(?:sellerdisplayname|sellername)"\s*:\s*"([^"]+)"',
-        text,
-        re.I,
-    )
-
-    print(
-        "WALMART_SELLER_DEBUG:",
-        list(dict.fromkeys(seller_debug))[:10],
-    )
-
-    seller_patterns = [
-        '"sellerdisplayname":"walmart.com"',
-        '"sellerdisplayname": "walmart.com"',
-        '"sellername":"walmart.com"',
-        '"sellername": "walmart.com"',
-    ]
-
-    for seller_signal in seller_patterns:
-        start = page.find(seller_signal)
-
-        if start == -1:
-            continue
-
-        # Only inspect a nearby chunk of Walmart's public
-        # structured product data instead of the whole page.
-        context = page[
-            max(0, start - 1500):
-            start + 3000
-        ]
-
-        in_stock = (
-            '"availability":"http://schema.org/instock"' in context
-            or '"availability":"https://schema.org/instock"' in context
-            or '"availabilitystatus":"in_stock"' in context
-            or '"availabilitystatus":"instock"' in context
-        )
-
-        sold_out = (
-            '"availability":"http://schema.org/outofstock"' in context
-            or '"availability":"https://schema.org/outofstock"' in context
-            or '"availabilitystatus":"out_of_stock"' in context
-            or '"availabilitystatus":"outofstock"' in context
-        )
-
-        price = extract_price(context)
-
-        if in_stock and not sold_out:
-            return {
-                "seller": "Walmart",
-                "status": "in_stock",
-                "price": price,
-            }
-
-        if sold_out and not in_stock:
-            return {
-                "seller": "Walmart",
-                "status": "sold_out",
-                "price": price,
-            }
-
-    return None
-
 def detect_quantity(text):
     """
     Quantity is only returned when a clear public quantity
@@ -360,17 +296,27 @@ def get_retailer_health(name):
             "rate_limits": 0,
             "blocked_checks": 0,
             "last_check": None,
+            "last_success": None,
+            "last_failure": None,
+            "latest_http_status": None,
+            "latency_ms": None,
+            "consecutive_failures": 0,
+            "next_eligible_check": None,
             "last_error": None,
         }
 
     return retailer_health[name]
 
 
-def mark_success(name):
+def mark_success(name, status_code=None, latency_ms=None):
     health = get_retailer_health(name)
 
     health["successful_checks"] += 1
     health["last_check"] = now_iso()
+    health["last_success"] = health["last_check"]
+    health["latest_http_status"] = status_code
+    health["latency_ms"] = latency_ms
+    health["consecutive_failures"] = 0
     health["last_error"] = None
 
     if health["backoff_multiplier"] > 1:
@@ -386,11 +332,15 @@ def mark_success(name):
     )
 
 
-def mark_failure(name, reason, status_code=None):
+def mark_failure(name, reason, status_code=None, latency_ms=None):
     health = get_retailer_health(name)
 
     health["failed_checks"] += 1
     health["last_check"] = now_iso()
+    health["last_failure"] = health["last_check"]
+    health["latest_http_status"] = status_code
+    health["latency_ms"] = latency_ms
+    health["consecutive_failures"] += 1
     health["last_error"] = reason
 
     if status_code == 429:
@@ -407,7 +357,12 @@ def mark_failure(name, reason, status_code=None):
         ),
     )
 
-    health["status"] = "slowed"
+    if status_code in (403, 429):
+        health["status"] = "blocked"
+    elif health["consecutive_failures"] >= 3:
+        health["status"] = "backing_off"
+    else:
+        health["status"] = "slowed"
 
 
 async def check_product(source):
@@ -448,17 +403,25 @@ async def check_product(source):
             (time.monotonic() - started) * 1000
         )
 
-        if store.lower() == "walmart":
-            walmart_offer = detect_walmart_offer(
-                response.text
-            )
+        parser_result = None
 
-            if walmart_offer:
-                status = walmart_offer["status"]
-                price = walmart_offer["price"]
-            else:
-                status = "unknown"
-                price = None
+        if store.lower() == "walmart":
+            item_match = re.search(r"/ip/(?:[^/?]+/)?(\d+)", url)
+            parser_result = parse_walmart(
+                response.text,
+                item_match.group(1) if item_match else None,
+            )
+            status = parser_result["status"]
+            price = parser_result["price"]
+
+        elif store.lower() == "target":
+            tcin_match = re.search(r"/A-(\d+)", url)
+            parser_result = parse_target(
+                response.text,
+                tcin_match.group(1) if tcin_match else None,
+            )
+            status = parser_result["status"]
+            price = parser_result["price"]
 
         else:
             status = detect_status(
@@ -480,15 +443,17 @@ async def check_product(source):
                 store,
                 f"HTTP {response.status_code}",
                 response.status_code,
+                elapsed_ms,
             )
         elif response.status_code >= 400:
             mark_failure(
                 store,
                 f"HTTP {response.status_code}",
                 response.status_code,
+                elapsed_ms,
             )
         else:
-            mark_success(store)
+            mark_success(store, response.status_code, elapsed_ms)
 
         msrp = safe_float(
             source.get("msrp")
@@ -550,9 +515,11 @@ async def check_product(source):
             "checked_at": now_iso(),
             "response_ms": elapsed_ms,
             "http_status": response.status_code,
+            "seller": parser_result.get("seller") if parser_result else store,
+            "parser_version": PARSER_VERSION if parser_result else "generic-1",
             "evidence": (
-                f"Public product page checked "
-                f"{datetime.now(timezone.utc).strftime('%H:%M:%S UTC')}"
+                f"{parser_result.get('evidence') if parser_result else 'Public product page checked'}; "
+                f"checked {datetime.now(timezone.utc).strftime('%H:%M:%S UTC')}"
             ),
         }
 
@@ -611,6 +578,7 @@ async def scheduler():
     print("TCG Radar scheduler started")
 
     next_checks = {}
+    last_priority_pulse = None
 
     while True:
         sources = load_sources()
@@ -620,6 +588,23 @@ async def scheduler():
             continue
 
         current = time.monotonic()
+
+        wall_clock = datetime.now(timezone.utc)
+        pulse = f"{wall_clock:%Y-%m-%dT%H}:{wall_clock.minute // 15}"
+
+        if (
+            wall_clock.minute % 15 == 0
+            and wall_clock.second < 8
+            and pulse != last_priority_pulse
+        ):
+            high_priority = [
+                source for source in sources
+                if str(source.get("priority", "normal")).lower() == "high"
+            ]
+            random.shuffle(high_priority)
+            for index, source in enumerate(high_priority):
+                next_checks[source_id(source)] = current + 2 + (index * 3) + random.uniform(0, 2)
+            last_priority_pulse = pulse
 
         for source in sources:
             key = source_id(source)
@@ -667,6 +652,11 @@ async def scheduler():
                 + next_interval * jitter
             )
 
+            health["next_eligible_check"] = datetime.fromtimestamp(
+                time.time() + next_interval * jitter,
+                timezone.utc,
+            ).isoformat()
+
             # Never hammer multiple products at the exact
             # same instant.
             await asyncio.sleep(1)
@@ -698,7 +688,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="TCG Radar API",
-    version="3.0.0",
+    version="3.1.0",
     lifespan=lifespan,
 )
 
@@ -718,7 +708,7 @@ app.add_middleware(
 async def root():
     return {
         "name": "TCG Radar",
-        "version": "3.0.0",
+        "version": "3.1.0",
         "status": "online",
         "message": "TCG Radar backend is running.",
     }
@@ -730,7 +720,7 @@ async def health():
 
     return {
         "status": "online",
-        "version": "3.0.0",
+        "version": "3.1.0",
         "time": now_iso(),
         "configured_products": len(
             sources
@@ -775,6 +765,11 @@ async def feed():
             for item in items
             if item.get("status") == "sold_out"
         ),
+        "marketplace_in_stock": sum(
+            1
+            for item in items
+            if item.get("status") == "marketplace_in_stock"
+        ),
         "errors": sum(
             1
             for item in items
@@ -795,6 +790,13 @@ async def feed():
 
 @app.get("/api/retailer-health")
 async def retailer_status():
+    sources = load_sources()
+    counts = {}
+    for source in sources:
+        store = retailer_name(source["url"], source.get("store", "Unknown"))
+        counts[store] = counts.get(store, 0) + 1
+    for store, health in retailer_health.items():
+        health["monitored_product_count"] = counts.get(store, 0)
     return {
         "generated_at": now_iso(),
         "retailers": list(

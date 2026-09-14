@@ -43,8 +43,29 @@
       </div>
 
       <div class="control-group">
+        <label>Retailer</label>
+        <select id="retailerFilter">
+          <option value="all">All retailers</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label>Status</label>
+        <select id="statusFilter">
+          <option value="all">All states</option>
+          <option value="in_stock">In stock</option>
+          <option value="marketplace_in_stock">Marketplace</option>
+          <option value="loaded">Loaded</option>
+          <option value="sold_out">Sold out</option>
+          <option value="unknown">Unknown</option>
+          <option value="error">Error</option>
+        </select>
+      </div>
+
+      <div class="control-group">
         <label>Max markup</label>
         <select id="markupFilter">
+          <option value="200">≤ 200% over MSRP</option>
           <option value="80">≤ 80% over MSRP</option>
           <option value="40">≤ 40% over MSRP</option>
           <option value="20">≤ 20% over MSRP</option>
@@ -62,7 +83,7 @@
     <section class="summary">
       <div class="stat card">
         <span id="resultCount">0</span>
-        <small>matching drops</small>
+        <small>matching products</small>
       </div>
       <div class="stat card">
         <span id="msrpCount">0</span>
@@ -82,12 +103,16 @@
 
     <section id="statusBox" class="status card"></section>
     <section id="results" class="grid"></section>
+    <section class="health-section">
+      <h2>Retailer health</h2>
+      <div id="healthGrid" class="health-grid"></div>
+    </section>
   </main>
 
   <dialog id="settingsDialog">
     <form method="dialog" class="dialog-card">
       <h2>Live Feed Settings</h2>
-      <p class="muted">Paste a JSON feed URL when you have a backend/API. Until then, the app uses built-in demo data.</p>
+      <p class="muted">TCG Radar is connected to its live Railway backend.</p>
       <label>Feed URL</label>
       <input id="feedUrl" placeholder="https://example.com/restocks.json" />
       <div class="dialog-actions">
@@ -102,6 +127,10 @@
       <div class="drop-head">
         <span class="badge game"></span>
         <span class="badge area"></span>
+      </div>
+      <div class="status-row">
+        <span class="badge product-status"></span>
+        <span class="seller"></span>
       </div>
       <h3 class="product"></h3>
       <p class="store"></p>
@@ -120,6 +149,7 @@
         </div>
       </div>
       <p class="evidence"></p>
+      <p class="checked"></p>
       <a class="buy" target="_blank" rel="noopener">Open Listing</a>
     </article>
   </template>

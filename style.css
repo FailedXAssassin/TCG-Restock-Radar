@@ -12,7 +12,7 @@ h1{font-size:1.4rem;margin:2px 0}
 .eyebrow{font-size:.68rem;letter-spacing:.14em;color:var(--accent);font-weight:800}
 main{max-width:980px;margin:0 auto;padding:16px}
 .card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
-.controls{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:14px}
+.controls{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:14px}
 .control-group{display:flex;flex-direction:column;gap:6px}
 label,small{color:var(--muted);font-size:.78rem}
 select,input{width:100%;background:#0f172a;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:11px}
@@ -26,14 +26,17 @@ button.secondary{background:#1f2937;color:var(--text);border:1px solid var(--lin
 .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
 .drop{padding:14px}
 .drop-head{display:flex;justify-content:space-between;gap:8px}
+.status-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px}.seller{font-size:.72rem;color:var(--muted);text-align:right}.product-status.in_stock{color:var(--good)}.product-status.marketplace_in_stock{color:#fb923c}.product-status.loaded{color:var(--warn)}.product-status.sold_out,.product-status.error,.product-status.blocked,.product-status.not_found{color:var(--bad)}
 .badge{display:inline-flex;padding:5px 8px;border-radius:999px;font-size:.72rem;font-weight:800;background:#0f172a;border:1px solid var(--line)}
 .product{margin:12px 0 4px;font-size:1.05rem}
 .store{margin:0 0 12px;color:var(--muted)}
 .price-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:10px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
 .price-row strong{display:block;margin-top:2px}
 .evidence{font-size:.85rem;color:var(--muted);min-height:38px}
+.checked{font-size:.75rem;color:var(--muted);margin:0}
 .buy{display:inline-block;margin-top:4px}
 .markup.good{color:var(--good)}.markup.warn{color:var(--warn)}.markup.bad{color:var(--bad)}
+.health-section{margin-top:22px}.health-section h2{font-size:1rem}.health-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.health-card{padding:12px;display:flex;flex-direction:column;gap:5px}.health-state{text-transform:capitalize;font-size:.75rem;color:var(--good)}.health-state.slowed,.health-state.backing_off{color:var(--warn)}.health-state.blocked,.health-state.error{color:var(--bad)}
 dialog{border:0;background:transparent;max-width:520px;width:calc(100% - 24px)}
 dialog::backdrop{background:rgba(0,0,0,.7)}
 .dialog-card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px;color:var(--text)}
@@ -41,6 +44,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
 @media(max-width:760px){
  .controls{grid-template-columns:1fr 1fr}
  .grid{grid-template-columns:1fr}
+ .health-grid{grid-template-columns:1fr}
 }
 @media(max-width:460px){
  .controls{grid-template-columns:1fr}
