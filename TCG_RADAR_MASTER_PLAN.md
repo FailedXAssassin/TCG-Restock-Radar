@@ -516,3 +516,10 @@ or expensive alert subscriptions.**
 - Conflicting Walmart availability signals remain Unknown; an EXTERNAL seller cannot be classified as Walmart retail merely by name.
 - Disabled the old notification-permission button and labeled push alerts as pending, because no backend Web Push delivery exists yet.
 - Persistent storage, admin CRUD and closed-app Web Push remain launch blockers. No paid resources were provisioned.
+
+### 2026-09-14 — Owner product controls
+
+- Added authenticated owner endpoints for listing, adding, editing, enabling/disabling, and removing products from the PWA. Product inputs are validated; public URLs only; duplicate URLs rejected.
+- Owner UI is phone-friendly and stores the entered owner secret only in browser session storage.
+- `TCG_RADAR_ADMIN_SECRET` must be set in Railway before these controls can operate. Until then endpoints return a deliberate configuration message rather than allowing unauthenticated changes.
+- Current JSON product file is functional for testing but is not durable across Railway redeployments without a persistent mounted volume. Do not claim closed-app alerts or persistent subscriptions are ready yet.
