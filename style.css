@@ -35,7 +35,7 @@ button:disabled{opacity:.55;cursor:not-allowed;transform:none}.dialog-title{disp
 
 /* Feed-first mobile layout — original TCG Radar styling */
 body{padding-bottom:104px}
-.topbar{padding:18px 20px;border-bottom-color:rgba(32,214,210,.14)}.topbar h1{font-size:1.28rem;letter-spacing:.02em}.topbar .eyebrow{font-size:.58rem}.topbar .sub{font-size:.72rem}.topbar .tagline{display:block;margin-top:5px;font-size:.66rem;color:var(--accent)}
+.topbar{padding:18px 20px;border-bottom-color:rgba(32,214,210,.14)}.topbar h1{font-size:1.28rem;letter-spacing:.02em}.topbar .eyebrow{font-size:.58rem}.topbar .sub{font-size:.72rem}.topbar .tagline{display:none}body:after{content:"NOT LIKE THE OTHER DICK HEADS";position:fixed;z-index:0;left:-18vw;bottom:17vh;transform:rotate(-22deg);font-size:clamp(1.8rem,9vw,4.7rem);font-weight:950;letter-spacing:.12em;color:rgba(32,214,210,.045);white-space:nowrap;pointer-events:none}main,.topbar,.bottom-nav{position:relative;z-index:1}
 main{max-width:760px;padding:14px 16px 28px}.radar-hero{display:none}.radar-snapshot{grid-template-columns:1fr 1fr;margin:0 0 12px}.snapshot-card{padding:11px;border-radius:14px}.snapshot-card:nth-child(3){grid-column:1/-1}.snapshot-highlight strong{font-size:.76rem}
 .summary{display:none}.quick-actions{display:none}.quick-actions.revealed{display:grid;grid-template-columns:repeat(2,1fr);margin:10px 0}.mode-tabs{display:none}.welcome-guide{border-radius:16px}.welcome-guide summary{padding:13px 15px}.guide-steps{font-size:.78rem}
 .filter-drawer{border-radius:16px;margin-bottom:10px}.filter-drawer summary{padding:13px 15px}.controls{padding:0 14px 14px;gap:10px}.control-group label{font-size:.68rem}
