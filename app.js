@@ -1,6 +1,10 @@
 
 const $ = s => document.querySelector(s);
 let rows = [];
+const WATCHLIST_KEY="tcg-radar-watchlist";
+let watchlistOnly=false;
+function watchlist(){try{return new Set(JSON.parse(localStorage.getItem(WATCHLIST_KEY)||"[]"));}catch(_){return new Set();}}
+function saveWatchlist(items){localStorage.setItem(WATCHLIST_KEY,JSON.stringify([...items]));}
 let deferredPrompt = null;
 let viewMode = "online";
 let activePage = "radar";
@@ -51,7 +55,8 @@ function render(){
 
   const filtered=rows.filter(x=>{
     const m=markupPct(x);
-    return (viewMode==="online"||x.area==="Local") &&
+    return (!watchlistOnly||watchlist().has(x.id)) &&
+           (viewMode==="online"||x.area==="Local") &&
            (game==="all"||x.game===game) &&
            (area==="all"||x.area===area) &&
            (retailer==="all"||x.store===retailer) &&
@@ -83,6 +88,9 @@ function render(){
     const addedAt=item.notification_at||item.created_at||item.added_at;
     node.querySelector(".checked").textContent=addedAt?`Added ${timeAgo(addedAt)==="just now"?"just now":timeAgo(addedAt)+" ago"}`:"";
     const buy=node.querySelector(".buy"); buy.href=retailerHref(item); buy.textContent=/Android/i.test(navigator.userAgent)&&["Amazon","Walmart","Target","Best Buy"].includes(item.store)?`Open in ${item.store} app`:`Open ${item.store} listing`;
+    const watch=node.querySelector(".watch"), watched=watchlist().has(item.id);
+    watch.textContent=watched?"★":"☆"; watch.classList.toggle("watched",watched); watch.setAttribute("aria-label",watched?"Remove from watchlist":"Add to watchlist");
+    watch.onclick=()=>{const items=watchlist();items.has(item.id)?items.delete(item.id):items.add(item.id);saveWatchlist(items);updateWatchlistButton();render();};
     node.querySelector(".report").onclick=async()=>{ const reason=prompt("What is wrong? Enter false alert, wrong price, broken link, or other.","false alert"); if(!reason)return; const normalized=reason.trim().toLowerCase().replace(/\s+/g,"_"); const allowed={"false_alert":"false_alert","wrong_price":"wrong_price","broken_link":"broken_link","other":"other"}; try{const response=await fetch(api("/api/reports"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({product_id:item.id,reason:allowed[normalized]||"other"})}); if(!response.ok)throw new Error("Report could not be saved"); alert("Thanks—your report was saved for review.");}catch(error){alert(error.message);} };
     const alertKey=item.notification_at?`${item.id}|${item.notification_at}`:"";
     const seen=new Set(JSON.parse(localStorage.getItem(SEEN_ALERTS_KEY)||"[]"));
@@ -359,6 +367,9 @@ function closeSettings(){
   document.body.classList.remove("settings-open");
 }
 applyTheme(localStorage.getItem(THEME_KEY)||"dark");
+function updateWatchlistButton(){const count=watchlist().size;$("#watchlistBtn").innerHTML=`${watchlistOnly?"★":"☆"} <span>${watchlistOnly?"Showing watchlist":`My watchlist${count?` (${count})`:""}`}</span>`;}
+$("#watchlistBtn").addEventListener("click",()=>{watchlistOnly=!watchlistOnly;updateWatchlistButton();switchPage("radar");render();});
+updateWatchlistButton();
 $("#settingsBtn").addEventListener("click",openSettings);
 $("#closeSettingsBtn").addEventListener("click",closeSettings);
 $("#settingsScrim").addEventListener("click",closeSettings);
