@@ -224,7 +224,6 @@ async function configureGoogleSignIn(){try{const config=await fetch(api("/api/au
 function openPurchases(){ $("#purchasesDialog").showModal(); $("#purchaseDate").value=new Date().toISOString().slice(0,10); configureGoogleSignIn(); renderPurchases(); }
 function openAccount(){ $("#accountDialog").showModal(); configureGoogleSignIn(); renderPurchases(); }
 function signOut(){ googleToken=""; accountUser=null; sessionStorage.removeItem("tcg-radar-google-token"); $("#googleSignIn").innerHTML=""; $("#googleSignIn").hidden=false; configureGoogleSignIn(); renderPurchases(); }
-$("#purchasesBtn").addEventListener("click",()=>{closeSettings();openPurchases();});
 $("#openPurchasePage").addEventListener("click",openPurchases);
 $("#closePurchasesBtn").addEventListener("click",()=>$("#purchasesDialog").close());
 $("#closeAccountBtn").addEventListener("click",()=>$("#accountDialog").close());
