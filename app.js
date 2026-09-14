@@ -8,7 +8,7 @@ const API_BASE = location.hostname.endsWith("github.io")
 
 const statusLabels = {
   in_stock:"🟢 Retail In Stock", marketplace_in_stock:"🟠 Marketplace In Stock",
-  loaded:"🟡 Loaded / Not Released", sold_out:"🔴 Sold Out", unknown:"⚪ Unknown",
+  loaded:"🟡 Loaded / Not Released", invitation:"🔵 Invitation Required", sold_out:"🔴 Sold Out", unknown:"⚪ Unknown",
   blocked:"⚫ Blocked", error:"⚫ Error", not_found:"⚫ Not Found"
 };
 

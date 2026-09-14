@@ -3,6 +3,7 @@ import unittest
 from datetime import date
 
 from parsers import parse_target, parse_walmart
+import server
 
 
 def page(data):
@@ -69,3 +70,8 @@ class TargetParserTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InvitationOnlyTests(unittest.TestCase):
+    def test_invitation_request_is_unknown(self):
+        self.assertEqual(server.detect_status(200, "Request an invitation to purchase this item", "Amazon"), "invitation")

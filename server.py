@@ -367,13 +367,13 @@ async def notify_transition(item):
     if not push_ready() or not item.get("status_changed"):
         return
     previous, current = item.get("previous_status"), item.get("status")
-    meaningful = {("unknown", "loaded"), ("loaded", "in_stock"), ("sold_out", "in_stock"), ("unknown", "in_stock")}
+    meaningful = {("unknown", "loaded"), ("loaded", "in_stock"), ("sold_out", "in_stock"), ("unknown", "in_stock"), ("unknown", "invitation"), ("sold_out", "invitation")}
     if (previous, current) not in meaningful:
         return
     markup = safe_float(item.get("markup"))
     payload = {
         "title": "TCG Radar alert",
-        "body": f"{item.get('product')} is now {current.replace('_', ' ')} at {item.get('store')}",
+        "body": f"{item.get('product')} has an invitation request at {item.get('store')}" if current == "invitation" else f"{item.get('product')} is now {current.replace('_', ' ')} at {item.get('store')}",
         "url": item.get("url"),
         "tag": item.get("id"),
     }
@@ -459,6 +459,9 @@ def detect_quantity(text):
 
 def detect_status(status_code, text, store=None):
     page = text.lower()
+    invitation_only = ("request an invitation", "request invitation", "invitation required", "invite-only", "invite only")
+    if any(signal in page for signal in invitation_only):
+        return "invitation"
 
     if status_code == 404:
         return "not_found"
@@ -697,6 +700,9 @@ async def check_product(source):
                 response.text
             )
 
+        if any(signal in response.text.lower() for signal in ("request an invitation", "request invitation", "invitation required", "invite-only", "invite only")):
+            status = "invitation"
+            price = None
         quantity = detect_quantity(
             response.text
         )
