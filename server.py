@@ -272,6 +272,22 @@ def _write_sources(sources):
     temporary.replace(SOURCES_FILE)
 
 
+CATALOG_PRODUCT_TYPES = {
+    "elite_trainer_box",
+    "booster_bundle",
+    "booster_box",
+    "booster_pack",
+    "three_pack_blister",
+    "collection",
+    "premium_collection",
+    "ultra_premium_collection",
+    "tin",
+    "build_and_battle",
+    "deck",
+    "other_pack_product",
+}
+
+
 def _clean_source(payload):
     if not isinstance(payload, dict):
         raise HTTPException(status_code=422, detail="Product data must be an object")
@@ -293,6 +309,20 @@ def _clean_source(payload):
     max_markup = safe_float(payload.get("max_markup"), 80)
     if max_markup is None or max_markup < 0 or max_markup > 1000:
         raise HTTPException(status_code=422, detail="Maximum markup must be between 0 and 1000 percent")
+    set_name = str(payload.get("set_name", "")).strip()[:100]
+    product_type = str(payload.get("product_type", "other_pack_product")).strip().lower()
+    if product_type not in CATALOG_PRODUCT_TYPES:
+        raise HTTPException(status_code=422, detail="Choose a supported pack-containing product type")
+    packs = payload.get("packs")
+    if packs in ("", None):
+        packs = None
+    else:
+        try:
+            packs = int(packs)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="Pack count must be a whole number")
+        if not 1 <= packs <= 1000:
+            raise HTTPException(status_code=422, detail="Pack count must be between 1 and 1000")
     return {
         "enabled": bool(payload.get("enabled", True)),
         "game": str(payload.get("game", "Other")).strip() or "Other",
@@ -303,6 +333,10 @@ def _clean_source(payload):
         "msrp": msrp,
         "max_markup": max_markup,
         "priority": priority,
+        "set_name": set_name,
+        "product_type": product_type,
+        "packs": packs,
+        "official_seller_only": True,
     }
 
 
@@ -1011,6 +1045,9 @@ async def check_product(source):
                 "area",
                 "Online",
             ),
+            "set_name": source.get("set_name", ""),
+            "product_type": source.get("product_type", "other_pack_product"),
+            "packs": source.get("packs"),
             "store": store,
             "product": source.get(
                 "product",
@@ -1072,6 +1109,9 @@ async def check_product(source):
                 "area",
                 "Online",
             ),
+            "set_name": source.get("set_name", ""),
+            "product_type": source.get("product_type", "other_pack_product"),
+            "packs": source.get("packs"),
             "store": store,
             "product": source.get(
                 "product",
