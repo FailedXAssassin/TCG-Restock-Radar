@@ -9,9 +9,10 @@ const API_BASE = location.hostname.endsWith("github.io")
   : "";
 
 const statusLabels = {
-  in_stock:"🟢 Retail In Stock", marketplace_in_stock:"🟠 Marketplace In Stock",
-  loaded:"🟡 Loaded / Not Released", invitation:"🔵 Invitation Required", sold_out:"🔴 Sold Out", unknown:"⚪ Unknown",
-  blocked:"⚫ Blocked", error:"⚫ Error", not_found:"⚫ Not Found"
+  in_stock:"🟢 Confirmed retail stock", marketplace_in_stock:"🟠 Marketplace stock",
+  loaded:"🟡 Listing live — stock unconfirmed", invitation:"🟣 Invite / access required",
+  sold_out:"🔴 Sold out", unknown:"⚪ Availability unknown",
+  blocked:"⚫ Retailer blocked the check", error:"⚫ Check needs retry", not_found:"⚫ Listing not found"
 };
 
 function markupPct(item){
