@@ -59,7 +59,7 @@ function render(){
     node.querySelector(".store").textContent=item.store;
     node.querySelector(".product-status").textContent=statusLabels[item.status]||item.status||"Unknown";
     node.querySelector(".product-status").classList.add(item.status||"unknown");
-    node.querySelector(".seller").textContent=item.seller?`Seller: ${item.seller}`:"";
+    node.querySelector(".seller").textContent=item.status==="marketplace_in_stock"?`Third-party: ${item.seller||"Marketplace seller"}`:(item.seller?`Seller: ${item.seller}`:"");
     node.querySelector(".price").textContent=money(item.price);
     node.querySelector(".msrp").textContent=money(item.msrp);
     const m=markupPct(item), el=node.querySelector(".markup");
