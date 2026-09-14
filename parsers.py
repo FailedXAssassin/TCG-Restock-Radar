@@ -6,7 +6,7 @@ import re
 from datetime import date
 
 
-PARSER_VERSION = "2026.09.14.1"
+PARSER_VERSION = "2026.09.14.2"
 
 
 def _next_data(text):
@@ -75,13 +75,38 @@ def _target_price(value):
     return None
 
 
+def _walmart_marketplace_fallback(text):
+    """Conservative fallback for Walmart pages without usable Next.js product data."""
+    page = html.unescape(text)
+    # Never claim a Walmart-direct restock here. This fallback can only surface
+    # an explicitly marked, in-stock external seller.
+    if not re.search(r'"sellerType"\s*:\s*"EXTERNAL"', page, re.I):
+        return None
+    if not re.search(r'"(?:availabilityStatus|itemPageAvailabilityStatus)"\s*:\s*"IN_STOCK"', page, re.I):
+        return None
+
+    seller_match = re.search(r'"(?:sellerDisplayName|sellerName)"\s*:\s*"([^"]+)"', page, re.I)
+    price_match = re.search(r'"currentPrice"\s*:\s*\{[^{}]{0,500}?"price"\s*:\s*(\d+(?:\.\d{1,2})?)', page, re.I | re.S)
+    price = float(price_match.group(1)) if price_match else None
+    seller = seller_match.group(1).strip() if seller_match else "Third-party seller"
+    return {
+        "status": "marketplace_in_stock",
+        "price": price,
+        "seller": seller,
+        "evidence": "An explicitly marked third-party Walmart Marketplace offer is available",
+        "parser_version": PARSER_VERSION,
+    }
+
+
 def parse_walmart(text, expected_item_id=None):
     data = _next_data(text)
     try:
         product = data["props"]["pageProps"]["initialData"]["data"]["product"]
     except (TypeError, KeyError):
-        return {"status": "unknown", "price": None, "seller": None,
-                "evidence": "Walmart structured product data was unavailable", "parser_version": PARSER_VERSION}
+        return _walmart_marketplace_fallback(text) or {
+            "status": "unknown", "price": None, "seller": None,
+            "evidence": "Walmart structured product data was unavailable", "parser_version": PARSER_VERSION,
+        }
 
     item_id = str(product.get("usItemId", ""))
     if expected_item_id and item_id != str(expected_item_id):
@@ -105,8 +130,10 @@ def parse_walmart(text, expected_item_id=None):
         seller = offer.get("sellerDisplayName") or offer.get("sellerName") or "Marketplace seller"
         return {"status": "marketplace_in_stock", "price": _price(offer), "seller": seller,
                 "evidence": "Only a third-party Marketplace offer is confidently available", "parser_version": PARSER_VERSION}
-    return {"status": "unknown", "price": None, "seller": None,
-            "evidence": "No associated Walmart-owned offer could be classified", "parser_version": PARSER_VERSION}
+    return _walmart_marketplace_fallback(text) or {
+        "status": "unknown", "price": None, "seller": None,
+        "evidence": "No associated Walmart-owned offer could be classified", "parser_version": PARSER_VERSION,
+    }
 
 
 def parse_target(text, expected_tcin=None, today=None):
