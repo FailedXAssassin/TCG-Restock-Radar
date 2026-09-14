@@ -3,7 +3,7 @@ const $ = s => document.querySelector(s);
 let rows = [];
 const WATCHLIST_KEY="tcg-radar-watchlist";
 let watchlistOnly=false;
-const FILTER_IDS=["gameFilter","areaFilter","retailerFilter","statusFilter","markupFilter","quantityFilter","searchInput"];
+const FILTER_IDS=["gameFilter","retailerFilter","statusFilter","markupFilter","quantityFilter","searchInput"];
 let appliedFilters={};
 function readFilters(){return Object.fromEntries(FILTER_IDS.map(id=>[id,$("#"+id).value]));}
 function setFilters(values){FILTER_IDS.forEach(id=>{$("#"+id).value=values[id]??"";});}
@@ -52,7 +52,7 @@ function retailerHref(item){
   try{ const parsed=new URL(item.url); return `intent://${parsed.host}${parsed.pathname}${parsed.search}#Intent;scheme=https;package=${packages[item.store]};S.browser_fallback_url=${encodeURIComponent(item.url)};end`; }catch(_){ return item.url||"#"; }
 }
 function render(){
-  const game=appliedFilters.gameFilter??$("#gameFilter").value, area=appliedFilters.areaFilter??$("#areaFilter").value;
+  const game=appliedFilters.gameFilter??$("#gameFilter").value;
   const retailer=appliedFilters.retailerFilter??$("#retailerFilter").value, status=appliedFilters.statusFilter??$("#statusFilter").value;
   const maxMarkup=Number(appliedFilters.markupFilter??$("#markupFilter").value);
   const minQuantity=Number(appliedFilters.quantityFilter??$("#quantityFilter").value);
@@ -63,8 +63,7 @@ function render(){
     return (!watchlistOnly||watchlist().has(x.id)) &&
            (viewMode==="online"||x.area==="Local") &&
            (game==="all"||x.game===game) &&
-           (area==="all"||x.area===area) &&
-           (retailer==="all"||x.store===retailer) &&
+(retailer==="all"||x.store===retailer) &&
            (status==="all"||x.status===status) &&
            (m==null||x.status==="marketplace_in_stock"||m<=maxMarkup) &&
            (minQuantity===0||Number(x.quantity||0)>=minQuantity) &&
