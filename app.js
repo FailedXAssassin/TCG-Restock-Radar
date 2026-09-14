@@ -93,6 +93,7 @@ async function loadFeed(){
   }
   render();
   loadHealth();
+  loadAlerts();
   loadPush();
 }
 
@@ -103,6 +104,24 @@ async function loadHealth(){
     const data=await res.json();
     $("#healthGrid").innerHTML=(data.retailers||[]).map(x=>`<article class="card health-card"><strong>${x.retailer}</strong><span class="health-state ${x.status}">${(x.status||"unknown").replaceAll("_"," ")}</span><small>${x.monitored_product_count??0} product(s) • ${x.latency_ms??"—"} ms</small><small>${x.consecutive_failures||0} consecutive failures • ${Number(x.backoff_multiplier||1).toFixed(1)}× pacing</small></article>`).join("")||'<div class="status card">Health data will appear after the first checks.</div>';
   }catch(err){$("#healthGrid").innerHTML=`<div class="status card">Retailer health unavailable: ${err.message}</div>`}
+}
+
+async function loadAlerts(){
+  const list=$("#alertHistory");
+  try{
+    const res=await fetch(api("/api/alerts?t="+Date.now()),{cache:"no-store"});
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const items=(await res.json()).items||[];
+    list.innerHTML="";
+    if(!items.length){list.innerHTML="<small>No notifications recorded yet.</small>";return;}
+    for(const item of items.slice(0,20)){
+      const row=document.createElement("a"); row.className="alert-row"; row.href=item.url||"#"; row.target="_blank"; row.rel="noopener";
+      const title=document.createElement("strong"); title.textContent=item.product||"Product update";
+      const detail=document.createElement("span"); detail.textContent=`${item.store||"Retailer"} • ${statusLabels[item.status]||item.status||"Updated"}`;
+      const time=document.createElement("time"); time.dateTime=item.created_at||""; time.textContent=item.created_at?new Date(item.created_at).toLocaleString():"";
+      row.append(title,detail,time); list.appendChild(row);
+    }
+  }catch(_){list.innerHTML="<small>Notification history is temporarily unavailable.</small>";}
 }
 
 ["gameFilter","areaFilter","retailerFilter","statusFilter","markupFilter","quantityFilter","searchInput"].forEach(id=>$("#"+id).addEventListener("input",render));
