@@ -281,7 +281,7 @@ $("#alertSettingsForm").addEventListener("submit",async event=>{ event.preventDe
 
 function switchPage(page){
   activePage=page;
-  document.querySelectorAll("[data-page]").forEach(section=>{ section.hidden=section.dataset.page!==page; });
+  document.querySelectorAll("[data-page]").forEach(section=>{ section.hidden=section.dataset.page!==page || (section.id==="welcomeGuide" && localStorage.getItem("tcg-radar-welcome-guide-dismissed")); });
   const navMap={radar:"#navRadarBtn",alerts:"#navAlertsBtn",nearby:"#navNearbyBtn",collection:"#navCollectionBtn",more:"#navMoreBtn"};
   document.querySelectorAll(".bottom-nav button").forEach(button=>button.classList.toggle("active",button===$(navMap[page])));
   if(page==="nearby") setMode("local");
