@@ -180,6 +180,8 @@
           <div class="form-grid"><input id="moderatorName" required maxlength="60" placeholder="Moderator name" /><button type="submit">Create moderator code</button></div>
         </form>
         <div id="moderatorList" class="owner-products"></div>
+        <div class="owner-actions"><button id="loadReportsBtn" type="button" class="secondary">Review user reports</button></div>
+        <div id="ownerReports" class="owner-products"></div>
         <div class="owner-actions"><button id="testPushBtn" type="button" class="secondary">Send 10-sec Closed-App Test</button><button id="lockManagerBtn" type="button" class="secondary">Lock</button></div>
       </section>
       <p id="ownerMessage" class="muted"></p>
@@ -216,7 +218,7 @@
       </div>
       <p class="evidence"></p>
       <p class="checked"></p>
-      <a class="buy" target="_blank" rel="noopener">Open Listing</a>
+      <div class="card-actions"><a class="buy" target="_blank" rel="noopener">Open Listing</a><button class="report secondary" type="button">Report wrong status</button></div>
     </article>
   </template>
 

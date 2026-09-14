@@ -33,6 +33,9 @@ class AdminProductTests(unittest.TestCase):
         self.assertTrue(server._valid_subscription({"endpoint": "https://push.example/1", "keys": {"p256dh": "key", "auth": "auth"}}))
         self.assertFalse(server._valid_subscription({"endpoint": "http://push.example/1", "keys": {}}))
 
+    def test_report_reason_validation_values(self):
+        self.assertIn("false_alert", {"false_alert", "wrong_price", "broken_link", "other"})
+
     def test_extract_public_image_url(self):
         self.assertEqual(server.extract_image_url('<meta property="og:image" content="https://cdn.example.com/item.jpg">'), "https://cdn.example.com/item.jpg")
         self.assertIsNone(server.extract_image_url('<meta property="og:image" content="http://cdn.example.com/item.jpg">'))

@@ -34,7 +34,7 @@ button.secondary{background:#1f2937;color:var(--text);border:1px solid var(--lin
 .price-row strong{display:block;margin-top:2px}
 .evidence{font-size:.85rem;color:var(--muted);min-height:38px}
 .checked{font-size:.75rem;color:var(--muted);margin:0}
-.buy{display:inline-block;margin-top:4px}
+.buy{display:inline-block;margin-top:4px}.card-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.report{padding:9px 10px;font-size:.78rem}
 .markup.good{color:var(--good)}.markup.warn{color:var(--warn)}.markup.bad{color:var(--bad)}
 .health-section{margin-top:22px}.health-section h2{font-size:1rem}.health-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.health-card{padding:12px;display:flex;flex-direction:column;gap:5px}.health-state{text-transform:capitalize;font-size:.75rem;color:var(--good)}.health-state.slowed,.health-state.backing_off{color:var(--warn)}.health-state.blocked,.health-state.error{color:var(--bad)}
 dialog{border:0;background:transparent;max-width:520px;width:calc(100% - 24px)}

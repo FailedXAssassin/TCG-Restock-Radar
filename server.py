@@ -13,7 +13,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from parsers import PARSER_VERSION, parse_target, parse_walmart
 
@@ -161,6 +161,7 @@ def ensure_database():
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_products (id TEXT PRIMARY KEY, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS push_subscriptions (endpoint TEXT PRIMARY KEY, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_moderators (id TEXT PRIMARY KEY, name TEXT NOT NULL, secret_hash TEXT NOT NULL UNIQUE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cursor.execute("CREATE TABLE IF NOT EXISTS radar_reports (id TEXT PRIMARY KEY, product_id TEXT NOT NULL, reason TEXT NOT NULL, details TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), resolved BOOLEAN NOT NULL DEFAULT FALSE)")
             cursor.execute("SELECT COUNT(*) FROM radar_products")
             if cursor.fetchone()[0] == 0:
                 for source in _file_sources():
@@ -296,6 +297,23 @@ def manager_role(authorization=Header(default="")):
 def require_product_manager(authorization=Header(default="")):
     return manager_role(authorization)
 
+
+
+def _reports():
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT id, product_id, reason, details, created_at, resolved FROM radar_reports ORDER BY created_at DESC")
+                return [{"id": row[0], "product_id": row[1], "reason": row[2], "details": row[3], "created_at": row[4].isoformat(), "resolved": row[5]} for row in cursor.fetchall()]
+    return []
+
+
+def _write_report(report):
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("INSERT INTO radar_reports (id, product_id, reason, details) VALUES (%s, %s, %s, %s)", (report["id"], report["product_id"], report["reason"], report["details"]))
+            connection.commit()
 
 
 def _subscriptions():
@@ -1190,6 +1208,27 @@ async def announcement(payload: dict, authorization: str = Header(default="")):
     if attempted:
         asyncio.create_task(_broadcast_announcement(title, body, url))
     return {"attempted": attempted}
+
+
+@app.post("/api/reports", status_code=201)
+async def create_report(payload: dict, request: Request):
+    product_id = str(payload.get("product_id", "")).strip()
+    reason = str(payload.get("reason", "false_alert")).strip().lower()
+    details = str(payload.get("details", "")).strip()[:500]
+    allowed = {"false_alert", "wrong_price", "broken_link", "other"}
+    if product_id not in products and not any(source_id(source) == product_id for source in _all_sources()):
+        raise HTTPException(status_code=404, detail="Product was not found")
+    if reason not in allowed:
+        raise HTTPException(status_code=422, detail="That report type is not supported")
+    report = {"id": secrets.token_urlsafe(10), "product_id": product_id, "reason": reason, "details": details}
+    _write_report(report)
+    return {"reported": True, "id": report["id"]}
+
+
+@app.get("/api/admin/reports")
+async def list_reports(authorization: str = Header(default="")):
+    require_admin(authorization)
+    return {"items": _reports()}
 
 
 @app.get("/api/push/config")
