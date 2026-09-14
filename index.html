@@ -270,36 +270,33 @@
 
   <template id="itemTemplate">
     <article class="drop card">
-      <div class="drop-head">
-        <img class="product-image" alt="" loading="lazy" />
-        <div class="drop-tags"><span class="badge game"></span>
-        <span class="badge area"></span></div>
+      <img class="product-image" alt="" loading="lazy" />
+      <div class="drop-main">
+        <div class="drop-tags"><span class="badge game"></span><span class="badge area"></span></div>
+        <h3 class="product"></h3>
+        <div class="status-row"><span class="badge product-status"></span><span class="seller"></span></div>
+        <p class="store"></p>
+        <p class="checked"></p>
       </div>
-      <div class="status-row">
-        <span class="badge product-status"></span>
-        <span class="seller"></span>
-      </div>
-      <h3 class="product"></h3>
-      <p class="store"></p>
-      <div class="price-row">
-        <div>
-          <small>Price</small>
-          <strong class="price"></strong>
+      <div class="drop-side">
+        <div class="price-row">
+          <div><small>Now</small><strong class="price"></strong></div>
+          <div><small>MSRP</small><strong class="msrp"></strong></div>
+          <div><small>Markup</small><strong class="markup"></strong></div>
         </div>
-        <div>
-          <small>MSRP</small>
-          <strong class="msrp"></strong>
-        </div>
-        <div>
-          <small>Markup</small>
-          <strong class="markup"></strong>
-        </div>
+        <div class="card-actions"><a class="buy" target="_blank" rel="noopener">Open listing</a><button class="report secondary" type="button" aria-label="Report wrong status">!</button></div>
       </div>
       <p class="evidence"></p>
-      <p class="checked"></p>
-      <div class="card-actions"><a class="buy" target="_blank" rel="noopener">Open Listing</a><button class="report secondary" type="button">Report wrong status</button></div>
     </article>
   </template>
+
+  <nav class="bottom-nav" aria-label="Primary navigation">
+    <button id="navRadarBtn" class="active" type="button"><span>◉</span>Radar</button>
+    <button id="navAlertsBtn" type="button"><span>♢</span>Alerts</button>
+    <button id="navNearbyBtn" type="button"><span>⌖</span>Nearby</button>
+    <button id="navCollectionBtn" type="button"><span>▣</span>Collection</button>
+    <button id="navMoreBtn" type="button"><span>•••</span>More</button>
+  </nav>
 
   <script src="app.js"></script>
 </body>
