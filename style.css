@@ -127,3 +127,7 @@ body:after{left:50%;bottom:14vh;transform:translateX(-50%) rotate(-16deg);font-s
 
 /* Prominent account access lives on the More page. */
 .quick-actions .account-quick{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;text-align:left;padding:16px 17px;background:linear-gradient(135deg,rgba(32,214,210,.92),rgba(100,128,255,.95));color:#07111f}.account-quick span{display:grid;gap:3px}.account-quick strong{font-size:1rem}.account-quick small{color:rgba(7,17,31,.72);font-size:.74rem;font-weight:700}.account-quick b{font-size:1.55rem}.account-dialog-card{min-height:230px}.account-dialog-card #googleSignIn{margin-top:20px}
+
+
+/* Larger centered radar watermark for the open mobile canvas. */
+body:before{right:50%;bottom:12vh;transform:translateX(50%);width:min(82vw,460px);height:min(82vw,460px);opacity:.11;filter:drop-shadow(0 0 32px rgba(32,214,210,.34))}
