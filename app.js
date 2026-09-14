@@ -203,19 +203,23 @@ function applyTheme(theme){
   $("#themeLabel").textContent=light?"Light mode":"Dark mode";
   $("#themeToggle").querySelector("b").textContent=light?"☀":"☾";
 }
-function updateSettingsAccount(){
+function updateAccountQuick(){
   const signed=Boolean(googleToken&&accountUser);
-  $("#settingsAccountTitle").textContent=signed?"Sign out":"Sign in";
-  $("#settingsAccountDetail").textContent=signed?(accountUser.is_owner?"Owner account":"Signed in with Google"):"Use Google to save purchases";
+  $("#accountQuickTitle").textContent=signed?(accountUser.is_owner?"Owner":"Signed in"):"Sign in";
+  $("#accountQuickDetail").textContent=signed?"Tap to sign out":"Use Google to save purchases";
 }
 function accountHeaders(){return googleToken?{Authorization:`Bearer ${googleToken}`}:{};}
-async function renderPurchases(){const list=$("#purchaseList"); list.innerHTML=""; if(!googleToken){$("#purchaseForm").hidden=true;$("#signOutBtn").hidden=true;$("#accountStatus").textContent="Sign in with Google to save purchases across devices.";updateSettingsAccount();return;} try{const response=await fetch(api("/api/purchases"),{headers:accountHeaders(),cache:"no-store"}); if(!response.ok)throw new Error("Your Google session expired. Please sign in again."); const items=(await response.json()).items||[]; $("#purchaseForm").hidden=false;$("#signOutBtn").hidden=false;$("#accountStatus").textContent=accountUser?`Signed in as ${accountUser.is_owner?"Owner":(accountUser.name||"Google member")}`:"Signed in with Google";updateSettingsAccount();$("#purchaseTotal").textContent=new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(items.reduce((sum,item)=>sum+Number(item.paid||0),0)); if(!items.length){list.innerHTML="<small>No purchases logged yet.</small>";return;} for(const item of items){const row=document.createElement("div"); row.className="purchase-row"; const info=document.createElement("span"); const title=document.createElement("strong"); title.textContent=`${item.name} × ${item.quantity}`; const detail=document.createElement("small"); detail.textContent=`${item.retailer||"Retailer not listed"} • ${item.date||"Date not listed"} • ${money(item.paid)}`; info.append(title,detail); const remove=document.createElement("button"); remove.className="remove"; remove.type="button"; remove.textContent="Remove"; remove.onclick=async()=>{await fetch(api(`/api/purchases/${encodeURIComponent(item.id)}`),{method:"DELETE",headers:accountHeaders()});renderPurchases();}; row.append(info,remove); list.appendChild(row);}}catch(error){googleToken="";sessionStorage.removeItem("tcg-radar-google-token");$("#accountStatus").textContent=error.message;$("#purchaseForm").hidden=true;}}
+async function renderPurchases(){const list=$("#purchaseList"); list.innerHTML=""; if(!googleToken){$("#purchaseForm").hidden=true;$("#purchaseLoginNote").hidden=false;$("#signOutBtn").hidden=true;$("#googleSignIn").hidden=false;$("#accountStatus").textContent="Sign in with Google to save purchases across devices.";updateAccountQuick();return;} try{const response=await fetch(api("/api/purchases"),{headers:accountHeaders(),cache:"no-store"}); if(!response.ok)throw new Error("Your Google session expired. Please sign in again."); const items=(await response.json()).items||[]; $("#purchaseForm").hidden=false;$("#purchaseLoginNote").hidden=true;$("#signOutBtn").hidden=false;$("#googleSignIn").hidden=true;$("#accountStatus").textContent=accountUser?`Signed in as ${accountUser.is_owner?"Owner":(accountUser.name||"Google member")}`:"Signed in with Google";updateAccountQuick();$("#purchaseTotal").textContent=new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(items.reduce((sum,item)=>sum+Number(item.paid||0),0)); if(!items.length){list.innerHTML="<small>No purchases logged yet.</small>";return;} for(const item of items){const row=document.createElement("div"); row.className="purchase-row"; const info=document.createElement("span"); const title=document.createElement("strong"); title.textContent=`${item.name} × ${item.quantity}`; const detail=document.createElement("small"); detail.textContent=`${item.retailer||"Retailer not listed"} • ${item.date||"Date not listed"} • ${money(item.paid)}`; info.append(title,detail); const remove=document.createElement("button"); remove.className="remove"; remove.type="button"; remove.textContent="Remove"; remove.onclick=async()=>{await fetch(api(`/api/purchases/${encodeURIComponent(item.id)}`),{method:"DELETE",headers:accountHeaders()});renderPurchases();}; row.append(info,remove); list.appendChild(row);}}catch(error){googleToken="";sessionStorage.removeItem("tcg-radar-google-token");$("#accountStatus").textContent=error.message;$("#purchaseForm").hidden=true;}}
 async function configureGoogleSignIn(){try{const config=await fetch(api("/api/auth/config"),{cache:"no-store"}).then(r=>r.json()); if(!config.enabled){$("#accountStatus").textContent="Google sign-in is being configured.";return;} if(googleToken){accountUser=await fetch(api("/api/auth/me"),{headers:accountHeaders()}).then(r=>r.ok?r.json():null);if(accountUser){renderPurchases();return;}googleToken="";sessionStorage.removeItem("tcg-radar-google-token");} if(!window.google?.accounts?.id){setTimeout(configureGoogleSignIn,500);return;} window.google.accounts.id.initialize({client_id:config.client_id,callback:credential=>{googleToken=credential.credential;sessionStorage.setItem("tcg-radar-google-token",googleToken);fetch(api("/api/auth/me"),{headers:accountHeaders()}).then(r=>r.json()).then(user=>{accountUser=user;renderPurchases();});}});$("#googleSignIn").innerHTML="";window.google.accounts.id.renderButton($("#googleSignIn"),{theme:"filled_black",size:"large",shape:"pill",text:"signin_with"});}catch(_){$("#accountStatus").textContent="Google sign-in is temporarily unavailable.";}}
 function openPurchases(){ $("#purchasesDialog").showModal(); $("#purchaseDate").value=new Date().toISOString().slice(0,10); configureGoogleSignIn(); renderPurchases(); }
+function openAccount(){ $("#accountDialog").showModal(); configureGoogleSignIn(); renderPurchases(); }
+function signOut(){ googleToken=""; accountUser=null; sessionStorage.removeItem("tcg-radar-google-token"); $("#googleSignIn").innerHTML=""; $("#googleSignIn").hidden=false; configureGoogleSignIn(); renderPurchases(); }
 $("#purchasesBtn").addEventListener("click",()=>{closeSettings();openPurchases();});
 $("#openPurchasePage").addEventListener("click",openPurchases);
 $("#closePurchasesBtn").addEventListener("click",()=>$("#purchasesDialog").close());
-$("#signOutBtn").addEventListener("click",()=>{googleToken="";accountUser=null;sessionStorage.removeItem("tcg-radar-google-token");$("#googleSignIn").innerHTML="";configureGoogleSignIn();renderPurchases();});
+$("#closeAccountBtn").addEventListener("click",()=>$("#accountDialog").close());
+$("#accountQuickBtn").addEventListener("click",()=>googleToken?signOut():openAccount());
+$("#signOutBtn").addEventListener("click",signOut);
 $("#purchaseForm").addEventListener("submit",async event=>{event.preventDefault();const item={name:$("#purchaseName").value.trim(),quantity:Math.max(1,Number($("#purchaseQty").value||1)),paid:Number($("#purchasePaid").value||0),retailer:$("#purchaseRetailer").value.trim(),date:$("#purchaseDate").value,notes:$("#purchaseNotes").value.trim()};const response=await fetch(api("/api/purchases"),{method:"POST",headers:{"Content-Type":"application/json",...accountHeaders()},body:JSON.stringify(item)});if(!response.ok){$("#accountStatus").textContent=(await response.json().catch(()=>({}))).detail||"Purchase could not be saved";return;}event.target.reset();$("#purchaseQty").value="1";renderPurchases();});
 
 ["gameFilter","areaFilter","retailerFilter","statusFilter","markupFilter","quantityFilter","searchInput"].forEach(id=>$("#"+id).addEventListener("input",render));
@@ -344,7 +348,7 @@ $("#navMoreBtn").addEventListener("click",()=>switchPage("more"));
 function openSettings(){
   $("#settingsMarkup").value=String(personalMarkup());
   hydrateAlertChoices();
-  updateSettingsAccount();
+  updateAccountQuick();
   $("#settingsScrim").hidden=false;
   $("#settingsDrawer").setAttribute("aria-hidden","false");
   document.body.classList.add("settings-open");
@@ -359,7 +363,7 @@ $("#settingsBtn").addEventListener("click",openSettings);
 $("#closeSettingsBtn").addEventListener("click",closeSettings);
 $("#settingsScrim").addEventListener("click",closeSettings);
 $("#themeToggle").addEventListener("click",()=>{const next=document.body.classList.contains("light-mode")?"dark":"light";localStorage.setItem(THEME_KEY,next);applyTheme(next);});
-$("#settingsAccountBtn").addEventListener("click",()=>{if(googleToken){googleToken="";accountUser=null;sessionStorage.removeItem("tcg-radar-google-token");$("#googleSignIn").innerHTML="";configureGoogleSignIn();renderPurchases();return;}closeSettings();openPurchases();});
+
 
 const WELCOME_GUIDE_KEY="tcg-radar-welcome-guide-dismissed";
 if(localStorage.getItem(WELCOME_GUIDE_KEY)) $("#welcomeGuide").hidden=true;
