@@ -600,20 +600,17 @@ def detect_quantity(text):
 
 
 def invitation_signal(text):
-    """Recognize invite, waitlist, and gated-access pages before any stock logic."""
+    """Use only explicit invitation language; generic marketing copy is ignored."""
     page = text.lower()
     patterns = (
-        r"(?:request|requires?|need|join)[\s_-]*(?:an?\s+)?invitation",
+        r"request[\s_-]*(?:an?\s+)?invitation",
         r"invitation[\s_-]*(?:request|required|only)",
         r"invite[\s_-]*only",
         r"request[\s_-]*(?:an?\s+)?invite",
         r"join[\s_-]*(?:the\s+)?waitlist",
-        r"(?:request|apply|register)[\s_-]*(?:for[\s_-]*)?access",
-        r"(?:early|exclusive|member)[\s_-]*(?:access|invite)",
         r"purchase[\s_-]*only[\s_-]*(?:if|with)[\s_-]*(?:you[\s_-]*)?(?:are[\s_-]*)?invited",
     )
     return any(re.search(pattern, page) for pattern in patterns)
-
 
 def detect_status(status_code, text, store=None):
     page = text.lower()
