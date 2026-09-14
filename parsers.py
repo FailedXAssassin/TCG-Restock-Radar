@@ -6,7 +6,7 @@ import re
 from datetime import date
 
 
-PARSER_VERSION = "2026.09.14.3"
+PARSER_VERSION = "2026.09.14.4"
 
 
 def _next_data(text):
