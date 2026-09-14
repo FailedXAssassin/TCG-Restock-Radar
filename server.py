@@ -175,6 +175,7 @@ def ensure_database():
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_support_bans (client_id TEXT PRIMARY KEY, reason TEXT NOT NULL DEFAULT 'Spam', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_users (google_sub TEXT PRIMARY KEY, email TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_purchases (id TEXT PRIMARY KEY, google_sub TEXT NOT NULL, payload JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cursor.execute("CREATE TABLE IF NOT EXISTS radar_visitors (client_id TEXT PRIMARY KEY, first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(), last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("SELECT COUNT(*) FROM radar_products")
             if cursor.fetchone()[0] == 0:
                 for source in _file_sources():
@@ -1241,6 +1242,16 @@ async def alert_history():
 async def auth_config():
     return {"enabled": bool(GOOGLE_CLIENT_ID), "client_id": GOOGLE_CLIENT_ID or None}
 
+@app.post("/api/visitors/heartbeat")
+async def visitor_heartbeat(payload: dict):
+    client_id = str(payload.get("client_id", "")).strip()[:80]
+    if not client_id or not database_enabled(): return {"counted": False}
+    with _database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("INSERT INTO radar_visitors (client_id) VALUES (%s) ON CONFLICT (client_id) DO UPDATE SET last_seen = NOW()", (client_id,))
+        connection.commit()
+    return {"counted": True}
+
 
 @app.get("/api/auth/me")
 async def auth_me(authorization: str = Header(default="")):
@@ -1309,6 +1320,18 @@ async def create_help_message(payload: dict):
 async def admin_status(authorization: str = Header(default="")):
     require_admin(authorization)
     return {"configured": True, "storage": str(SOURCES_FILE.name), "persistent_volume_required": "RAILWAY_VOLUME_MOUNT_PATH" not in os.environ}
+
+@app.get("/api/admin/usage")
+async def admin_usage(authorization: str = Header(default="")):
+    require_admin(authorization)
+    if not database_enabled(): return {"anonymous_devices": 0, "google_accounts": 0, "push_devices": 0, "help_devices": 0}
+    with _database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM radar_visitors"); anonymous = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM radar_users"); accounts = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM push_subscriptions"); push = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(DISTINCT client_id) FROM radar_support_messages"); help_users = cursor.fetchone()[0]
+    return {"anonymous_devices": anonymous, "google_accounts": accounts, "push_devices": push, "help_devices": help_users}
 
 
 @app.get("/api/admin/help")
