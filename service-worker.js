@@ -1,5 +1,5 @@
 
-const CACHE = "tcg-radar-v3-5";
+const CACHE = "tcg-radar-v3-6";
 const ASSETS = ["./","index.html","style.css","app.js","manifest.webmanifest","icon-radar-v2.svg"];
 self.addEventListener("install", e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting())));
 self.addEventListener("activate", e => e.waitUntil(Promise.all([
