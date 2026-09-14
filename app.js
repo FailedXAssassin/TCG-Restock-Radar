@@ -16,7 +16,12 @@ let healthAllowed = false;
 let reportProductId = "";
 let initialFeedRendered = false;
 const SEEN_ALERTS_KEY = "tcg-radar-seen-alerts";
-const visitorId=localStorage.getItem("tcg-radar-visitor")||crypto.randomUUID(); localStorage.setItem("tcg-radar-visitor",visitorId);
+function createVisitorId(){
+  if(globalThis.crypto&&typeof globalThis.crypto.randomUUID==="function") return globalThis.crypto.randomUUID();
+  return `visitor-${Date.now()}-${Math.random().toString(36).slice(2,12)}`;
+}
+const visitorId=localStorage.getItem("tcg-radar-visitor")||createVisitorId();
+localStorage.setItem("tcg-radar-visitor",visitorId);
 const API_BASE = location.hostname.endsWith("github.io")
   ? "https://tcg-restock-radar-production.up.railway.app/"
   : "";
