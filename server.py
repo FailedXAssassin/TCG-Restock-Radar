@@ -600,8 +600,19 @@ def detect_quantity(text):
 
 
 def invitation_signal(text):
+    """Recognize invite, waitlist, and gated-access pages before any stock logic."""
     page = text.lower()
-    return bool(re.search(r"(?:request|requires?|need|join)[\s_-]*(?:an?\s+)?invitation|invitation[\s_-]*(?:request|required|only)|invite[\s_-]*only|request[\s_-]*(?:an?\s+)?invite|join[\s_-]*(?:the\s+)?waitlist", page))
+    patterns = (
+        r"(?:request|requires?|need|join)[\s_-]*(?:an?\s+)?invitation",
+        r"invitation[\s_-]*(?:request|required|only)",
+        r"invite[\s_-]*only",
+        r"request[\s_-]*(?:an?\s+)?invite",
+        r"join[\s_-]*(?:the\s+)?waitlist",
+        r"(?:request|apply|register)[\s_-]*(?:for[\s_-]*)?access",
+        r"(?:early|exclusive|member)[\s_-]*(?:access|invite)",
+        r"purchase[\s_-]*only[\s_-]*(?:if|with)[\s_-]*(?:you[\s_-]*)?(?:are[\s_-]*)?invited",
+    )
+    return any(re.search(pattern, page) for pattern in patterns)
 
 
 def detect_status(status_code, text, store=None):
@@ -639,13 +650,14 @@ def detect_status(status_code, text, store=None):
 
             return "unknown"
         
-    in_stock_signals = [
+    # A visible "Add to cart" button alone is not proof of live stock: it can
+    # be part of an invite, preorder, or disabled purchase flow. Only structured
+    # availability data can promote a generic listing to an actual restock.
+    schema_in_stock_signals = [
         '"availability":"http://schema.org/instock"',
         '"availability":"https://schema.org/instock"',
         '"availability": "http://schema.org/instock"',
         '"availability": "https://schema.org/instock"',
-        "add to cart",
-        "add-to-cart",
     ]
 
     sold_out_signals = [
@@ -665,29 +677,20 @@ def detect_status(status_code, text, store=None):
         "pre-order",
     ]
 
-    has_in_stock = any(
-        signal in page
-        for signal in in_stock_signals
-    )
+    has_schema_in_stock = any(signal in page for signal in schema_in_stock_signals)
+    has_sold_out = any(signal in page for signal in sold_out_signals)
+    has_coming_soon = any(signal in page for signal in coming_soon_signals)
+    has_cart_button = "add to cart" in page or "add-to-cart" in page
 
-    has_sold_out = any(
-        signal in page
-        for signal in sold_out_signals
-    )
-
-    has_coming_soon = any(
-        signal in page
-        for signal in coming_soon_signals
-    )
-
-    if has_in_stock and not has_sold_out:
-        return "in_stock"
-
+    # Preorder and release-date language always wins over a cart control.
     if has_coming_soon:
         return "loaded"
-
-    if has_sold_out:
+    if has_sold_out and not has_schema_in_stock:
         return "sold_out"
+    if has_schema_in_stock and not has_sold_out:
+        return "in_stock"
+    if has_cart_button:
+        return "loaded"
 
     # A real page exists, but we cannot safely classify
     # whether it is purchasable yet.
