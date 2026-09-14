@@ -62,7 +62,7 @@ function render(){
     el.textContent=m==null?"—":`${m>=0?"+":""}${m.toFixed(0)}%`;
     if(m!=null) el.classList.add(m<=0?"good":m<=40?"warn":"bad");
     node.querySelector(".evidence").textContent=item.evidence||"";
-    node.querySelector(".checked").textContent=item.checked_at?`Last checked ${new Date(item.checked_at).toLocaleString()}`:"";
+    node.querySelector(".checked").textContent=item.notification_at?`🔔 Last notification ${new Date(item.notification_at).toLocaleString()} • checked ${item.checked_at?new Date(item.checked_at).toLocaleTimeString():"—"}`:item.checked_at?`Last checked ${new Date(item.checked_at).toLocaleString()}`:"";
     const buy=node.querySelector(".buy"); buy.href=retailerHref(item); buy.textContent=/Android/i.test(navigator.userAgent)&&["Amazon","Walmart","Target","Best Buy"].includes(item.store)?`Open in ${item.store} app`:`Open ${item.store} listing`;
     node.querySelector(".report").onclick=async()=>{ const reason=prompt("What is wrong? Enter false alert, wrong price, broken link, or other.","false alert"); if(!reason)return; const normalized=reason.trim().toLowerCase().replace(/\s+/g,"_"); const allowed={"false_alert":"false_alert","wrong_price":"wrong_price","broken_link":"broken_link","other":"other"}; try{const response=await fetch(api("/api/reports"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({product_id:item.id,reason:allowed[normalized]||"other"})}); if(!response.ok)throw new Error("Report could not be saved"); alert("Thanks—your report was saved for review.");}catch(error){alert(error.message);} };
     $("#results").appendChild(node);
@@ -197,3 +197,4 @@ $("#installBtn").addEventListener("click",async()=>{
 if("serviceWorker" in navigator) navigator.serviceWorker.register("service-worker.js");
 loadFeed();
 setInterval(loadFeed, 30000);
+
