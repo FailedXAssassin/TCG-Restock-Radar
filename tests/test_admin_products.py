@@ -18,6 +18,8 @@ class AdminProductTests(unittest.TestCase):
         self.assertEqual(item["msrp"], 49.99)
         with self.assertRaises(HTTPException):
             server._clean_source({"product": "Test", "url": "nope"})
+        with self.assertRaises(HTTPException):
+            server._clean_source({"product": "Test", "url": "https://example.com/1", "max_markup": -1})
 
     def test_write_sources_round_trip(self):
         with tempfile.TemporaryDirectory() as directory:

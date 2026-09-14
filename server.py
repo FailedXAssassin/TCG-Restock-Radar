@@ -309,6 +309,11 @@ async def notify_transition(item):
     meaningful = {("unknown", "loaded"), ("loaded", "in_stock"), ("sold_out", "in_stock"), ("unknown", "in_stock")}
     if (previous, current) not in meaningful:
         return
+    max_markup = safe_float(item.get("max_markup"), 80)
+    markup = safe_float(item.get("markup"))
+    if current == "in_stock" and markup is not None and max_markup is not None and markup > max_markup:
+        print(f"Skipping overpriced alert for {item.get('product')}: {markup}% > {max_markup}%")
+        return
     payload = {
         "title": "TCG Radar alert",
         "body": f"{item.get('product')} is now {current.replace('_', ' ')} at {item.get('store')}",
@@ -691,6 +696,7 @@ async def check_product(source):
                 "priority",
                 "normal",
             ),
+            "max_markup": safe_float(source.get("max_markup"), 80),
             "base_interval_seconds": interval_for(
                 source
             ),
@@ -747,6 +753,7 @@ async def check_product(source):
                 "priority",
                 "normal",
             ),
+            "max_markup": safe_float(source.get("max_markup"), 80),
             "base_interval_seconds": interval_for(
                 source
             ),
