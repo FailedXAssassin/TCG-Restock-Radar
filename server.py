@@ -45,10 +45,15 @@ USER_AGENT = (
 products = {}
 retailer_health = {}
 
-MEANINGFUL_TRANSITIONS = {
-    ("unknown", "loaded"), ("loaded", "in_stock"),
-    ("sold_out", "in_stock"), ("unknown", "in_stock"),
+# A restock must be observed twice after the product has first been seen
+# in a non-purchasable state. This avoids a single bad page response becoming
+# an alert, and avoids alerting merely because the service restarted.
+RESTOCK_ARMING_STATUSES = {"loaded", "sold_out", "not_found"}
+DIRECT_SELLER_NAMES = {
+    "walmart": {"walmart", "walmart.com"},
+    "target": {"target"},
 }
+
 
 scheduler_task = None
 http_client = None
@@ -496,10 +501,13 @@ def _send_web_push(subscription, payload):
 
 
 async def notify_transition(item):
-    if not item.get("status_changed"):
+    # Only a two-check, retailer-direct restock may notify. Marketplace,
+    # invitation, loaded, unknown and single-check results remain visible in
+    # the feed but are deliberately quiet.
+    if not item.get("restock_confirmed"):
         return
     previous, current = item.get("previous_status"), item.get("status")
-    if (previous, current) not in MEANINGFUL_TRANSITIONS:
+    if current != "in_stock" or not item.get("official_seller_verified"):
         return
     event = {
         "id": secrets.token_urlsafe(12),
@@ -536,6 +544,28 @@ async def notify_transition(item):
             expired.append(subscription.get("endpoint"))
     if expired:
         _write_subscriptions([item for item in _subscriptions() if item.get("endpoint") not in expired])
+
+
+def official_seller_verified(source, store, parser_result, text):
+    """Require retailer-direct evidence before a source can trigger a restock."""
+    if not source.get("official_seller_only", True):
+        return True
+
+    store_key = store.strip().lower()
+    seller = str((parser_result or {}).get("seller") or "").strip().lower()
+    if store_key in DIRECT_SELLER_NAMES:
+        return seller in DIRECT_SELLER_NAMES[store_key]
+
+    direct_phrases = {
+        "best buy": ("sold by best buy", "ships from best buy"),
+        "costco": ("sold by costco", "ships from costco", "costco wholesale"),
+        "sam's club": ("sold and shipped by sam's club", "sold by sam's club"),
+        "cvs": ("sold by cvs", "shipped by cvs"),
+        "walgreens": ("sold by walgreens", "shipped by walgreens"),
+        "amazon": ("ships from amazon.com", "sold by amazon.com"),
+    }
+    page = text.lower()
+    return any(phrase in page for phrase in direct_phrases.get(store_key, ()))
 
 
 def extract_price(text):
@@ -859,6 +889,9 @@ async def check_product(source):
             # and unconfirmed so it cannot generate a false restock push.
             status = "unknown"
             price = None
+        retailer_direct = official_seller_verified(source, store, parser_result, response.text)
+        if status == "in_stock" and not retailer_direct:
+            status = "unknown"
         quantity = detect_quantity(
             response.text
         )
@@ -904,9 +937,18 @@ async def check_product(source):
             and old_status != status
         )
 
+        restock_armed = bool(previous.get("restock_armed"))
+        if previous and status in RESTOCK_ARMING_STATUSES:
+            restock_armed = True
+        in_stock_streak = int(previous.get("in_stock_streak") or 0) + 1 if status == "in_stock" and retailer_direct else 0
+        restock_confirmed = bool(
+            restock_armed and status == "in_stock" and retailer_direct
+            and in_stock_streak >= 2 and not previous.get("live_alerted")
+        )
+
         checked_at = now_iso()
         notification_at = previous.get("notification_at")
-        if (old_status, status) in MEANINGFUL_TRANSITIONS:
+        if restock_confirmed:
             notification_at = checked_at
         products[product_key] = {
             "id": product_key,
@@ -931,6 +973,11 @@ async def check_product(source):
             "status": status,
             "previous_status": old_status,
             "status_changed": changed,
+            "restock_armed": restock_armed,
+            "in_stock_streak": in_stock_streak,
+            "live_alerted": bool(previous.get("live_alerted")) or restock_confirmed,
+            "restock_confirmed": restock_confirmed,
+            "official_seller_verified": retailer_direct,
             "price": price,
             "msrp": msrp,
             "markup": markup,
