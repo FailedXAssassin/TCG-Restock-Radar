@@ -59,3 +59,39 @@ main{max-width:760px;padding:14px 16px 28px}.radar-hero{display:none}.radar-snap
 .collection-page p{max-width:40ch;color:var(--muted);line-height:1.5;margin:0 0 22px}
 .collection-page button{width:100%}
 @media(min-width:700px){.quick-actions[data-page="more"]:not([hidden]){grid-template-columns:repeat(3,1fr)}.quick-actions[data-page="more"] button:last-child{grid-column:auto}}
+
+
+/* Airier product cards: facts are separated into readable zones */
+.drop{
+  grid-template-columns:82px minmax(0,1fr) auto;
+  grid-template-areas:
+    "image tags price"
+    "image title title"
+    "image status status"
+    "image checked checked"
+    "actions actions actions";
+  align-items:start;
+}
+.drop-main,.drop-side{display:contents}
+.product-image{grid-area:image;align-self:stretch}
+.drop-tags{grid-area:tags;align-self:start;min-width:0}
+.product{grid-area:title;margin:9px 0 7px;max-width:none}
+.status-row{grid-area:status;justify-content:flex-start;flex-wrap:wrap;margin:0;gap:6px}
+.seller{text-align:left;white-space:normal;overflow:visible;text-overflow:clip;max-width:100%}
+.checked{grid-area:checked;margin:8px 0 0;white-space:normal;overflow:visible;text-overflow:clip}
+.price-row{grid-area:price;display:flex;justify-content:flex-end;gap:8px;white-space:nowrap}
+.price-row div{min-width:42px}
+.card-actions{grid-area:actions;margin-top:10px;padding-top:10px;border-top:1px solid rgba(42,57,72,.7);width:100%}
+.card-actions .buy{flex:1;text-align:center}
+.drop:has(.product-image[hidden]){
+  grid-template-columns:minmax(0,1fr) auto;
+  grid-template-areas:
+    "tags price"
+    "title title"
+    "status status"
+    "checked checked"
+    "actions actions";
+}
+@media(min-width:700px){
+  .drop{grid-template-columns:102px minmax(0,1fr) auto}
+}
