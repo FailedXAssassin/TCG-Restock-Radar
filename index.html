@@ -131,6 +131,7 @@
 
     <section data-page="more" class="page-heading"><div class="eyebrow">YOUR TOOLS</div><h2>Settings & support</h2><p>Alerts, purchases, help, and manager access.</p></section>
     <section data-page="more" class="actions quick-actions">
+      <button id="accountQuickBtn" class="account-quick"><span><strong id="accountQuickTitle">Sign in</strong><small id="accountQuickDetail">Use Google to save purchases</small></span><b>›</b></button>
       <button id="settingsBtn">⚙ <span>Settings</span></button>
       <button id="refreshBtn" class="secondary">↻ <span>Refresh feed</span></button>
       <button id="ownerBtn" class="secondary" hidden>Manage Products</button>
@@ -169,7 +170,7 @@
     <div class="settings-drawer-head"><div><div class="eyebrow">TCG RADAR</div><h2>Settings</h2></div><button id="closeSettingsBtn" type="button" class="secondary" aria-label="Close settings">×</button></div>
     <section class="settings-group"><h3>Appearance</h3><button id="themeToggle" type="button" class="settings-row"><span><strong>Theme</strong><small id="themeLabel">Dark mode</small></span><b>☾</b></button></section>
     <section class="settings-group"><h3>Alerts</h3><label for="settingsMarkup">Alert only when a confirmed price is</label><select id="settingsMarkup"><option value="0">MSRP or less</option><option value="20">20% or less above MSRP</option><option value="40">40% or less above MSRP</option><option value="80">80% or less above MSRP</option><option value="200">200% or less above MSRP</option><option value="999">Any confirmed price</option></select><label class="choice-label">Games to alert me about</label><div id="settingsGames" class="choice-grid"><label><input type="checkbox" value="Pokemon" checked> Pokémon</label><label><input type="checkbox" value="One Piece" checked> One Piece</label><label><input type="checkbox" value="Magic" checked> Magic</label></div><label class="choice-label">Retailers to alert me about</label><div id="settingsStores" class="choice-grid"><label><input type="checkbox" value="Walmart" checked> Walmart</label><label><input type="checkbox" value="Target" checked> Target</label><label><input type="checkbox" value="Amazon" checked> Amazon</label><label><input type="checkbox" value="Best Buy" checked> Best Buy</label></div><button id="notifyBtn" type="button" class="settings-row"><span><strong>Notifications</strong><small>Enable or manage push alerts</small></span><b>›</b></button></section>
-    <section class="settings-group"><h3>Account</h3><button id="settingsAccountBtn" type="button" class="settings-row"><span><strong id="settingsAccountTitle">Sign in</strong><small id="settingsAccountDetail">Use Google to save purchases</small></span><b>›</b></button><button id="purchasesBtn" type="button" class="settings-row"><span><strong>My purchases</strong><small>Track what you actually paid</small></span><b>›</b></button></section>
+    
     <section class="settings-group"><h3>Support</h3><button id="helpBtn" type="button" class="settings-row"><span><strong>Help & message us</strong><small>Ask a question or report a problem</small></span><b>›</b></button></section>
     <p class="settings-note">TCG Radar respects retailers, keeps alerts conservative, and stays out of your way.</p>
   </aside>
@@ -219,10 +220,17 @@
   <dialog id="purchasesDialog">
     <div class="dialog-card"><div class="dialog-title"><h2>My purchases</h2><button id="closePurchasesBtn" type="button" class="secondary">Close</button></div>
       <p class="muted">Sign in with Google to track purchases. Record what you paid—not an estimated market value.</p>
-      <div id="accountStatus" class="account-status">Checking account setup…</div><div id="googleSignIn"></div><button id="signOutBtn" type="button" class="secondary" hidden>Sign out</button>
+      <p id="purchaseLoginNote" class="muted">Sign in from the More page to save and view purchases.</p>
       <div class="purchase-total"><span>Total logged spending</span><strong id="purchaseTotal">$0.00</strong></div>
       <form id="purchaseForm" class="product-form"><input id="purchaseName" required maxlength="120" placeholder="Product name" /><div class="form-grid"><input id="purchaseQty" type="number" min="1" step="1" value="1" placeholder="Quantity" /><input id="purchasePaid" required type="number" min="0" step="0.01" placeholder="Total paid" /></div><div class="form-grid"><input id="purchaseRetailer" maxlength="60" placeholder="Retailer" /><input id="purchaseDate" type="date" /></div><input id="purchaseNotes" maxlength="240" placeholder="Notes (optional)" /><button type="submit">Add purchase</button></form>
       <div id="purchaseList" class="purchase-list"><small>No purchases logged yet.</small></div>
+    </div>
+  </dialog>
+
+  <dialog id="accountDialog">
+    <div class="dialog-card account-dialog-card"><div class="dialog-title"><h2>Account</h2><button id="closeAccountBtn" type="button" class="secondary">Close</button></div>
+      <p class="muted">Sign in with Google to keep your purchases when you change phones or reinstall TCG Radar.</p>
+      <div id="accountStatus" class="account-status">Checking account setup…</div><div id="googleSignIn"></div><button id="signOutBtn" type="button" class="secondary" hidden>Sign out</button>
     </div>
   </dialog>
 
