@@ -113,12 +113,12 @@ VERIFIED_PRODUCT_HOSTS = {
 }
 
 VERIFIED_PRODUCT_PATHS = {
-    "walmart.com": re.compile(r"/ip/(?:[^/?]+/)?\\d+", re.I),
-    "target.com": re.compile(r"/(?:p/)?(?:[^/?]+/)?-?/A-\\d+", re.I),
+    "walmart.com": re.compile(r"/ip/(?:[^/?]+/)?\d+", re.I),
+    "target.com": re.compile(r"/(?:p/)?(?:[^/?]+/)?-?/A-\d+", re.I),
     "bestbuy.com": re.compile(r"/(?:site|product)/", re.I),
     "gamestop.com": re.compile(r"/(?:products?|p)/", re.I),
     "amazon.com": re.compile(r"/(?:dp|gp/product)/", re.I),
-    "costco.com": re.compile(r"/(?:.*/)?p/\\d+", re.I),
+    "costco.com": re.compile(r"/(?:.*/)?p/\d+", re.I),
     "samsclub.com": re.compile(r"/s/", re.I),
     "cvs.com": re.compile(r"/shop/p/", re.I),
     "walgreens.com": re.compile(r"/store/c/", re.I),
