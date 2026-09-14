@@ -26,6 +26,14 @@ const API_BASE = location.hostname.endsWith("github.io")
   ? "https://tcg-restock-radar-production.up.railway.app/"
   : "";
 
+const productTypeLabels={
+  elite_trainer_box:"ETB",booster_bundle:"Booster bundle",booster_box:"Booster box",
+  booster_pack:"Booster pack",three_pack_blister:"3-pack blister",tin:"Tin",
+  collection:"Collection",premium_collection:"Premium collection",
+  ultra_premium_collection:"Ultra-premium",build_and_battle:"Build & Battle",
+  deck:"Deck with packs",other_pack_product:"Pack product"
+};
+
 const statusLabels = {
   in_stock:"🟢 Confirmed retail stock", marketplace_in_stock:"🟠 Third-party seller",
   loaded:"🟡 Listing live — stock unconfirmed", invitation:"🟣 Invite / access required",
@@ -83,7 +91,11 @@ function render(){
     const image=node.querySelector(".product-image");
     if(item.image_url){ image.src=item.image_url; image.alt=item.product||"Product image"; image.onerror=()=>{image.hidden=true;}; } else image.hidden=true;
     node.querySelector(".game").textContent=item.game;
-    node.querySelector(".area").textContent=item.area;
+    const setBadge=node.querySelector(".set");
+    setBadge.textContent=item.set_name||"Set not labeled";
+    setBadge.hidden=!item.set_name;
+    const typeBadge=node.querySelector(".product-type");
+    typeBadge.textContent=productTypeLabels[item.product_type]||"Pack product";
     node.querySelector(".product").textContent=item.product;
     node.querySelector(".store").textContent=item.store;
     node.querySelector(".product-status").textContent=statusLabels[item.status]||item.status||"Unknown";
@@ -297,7 +309,7 @@ async function loadReports(){try{const data=await ownerFetch("/api/admin/reports
 $("#loadReportsBtn").addEventListener("click",loadReports);
 async function loadModerators(){try{const data=await ownerFetch("/api/admin/moderators"); const list=$("#moderatorList"); list.innerHTML=""; for(const moderator of data.items||[]){const row=document.createElement("div"); row.className="owner-product"; row.innerHTML=`<span><strong></strong><small>Can add and remove tracked URLs only</small></span><button type="button" class="remove">Remove</button>`; row.querySelector("strong").textContent=moderator.name; row.querySelector("button").onclick=async()=>{if(!confirm(`Remove ${moderator.name}'s moderator access?`))return; try{await ownerFetch(`/api/admin/moderators/${moderator.id}`,{method:"DELETE"}); await loadModerators();}catch(error){$("#ownerMessage").textContent=error.message;}}; list.appendChild(row);}}catch(error){$("#ownerMessage").textContent=error.message;}}
 $("#moderatorForm").addEventListener("submit",async event=>{event.preventDefault(); try{const result=await ownerFetch("/api/admin/moderators",{method:"POST",body:JSON.stringify({name:$("#moderatorName").value})}); $("#moderatorName").value=""; await loadModerators(); prompt(`Copy this one-time moderator code for ${result.name}. Send it privately; it will not be shown again. They can use the manager link ending in ?manager=1.`,result.access_code);}catch(error){$("#ownerMessage").textContent=error.message;}});
-$("#productForm").addEventListener("submit",async event=>{event.preventDefault(); $("#ownerMessage").textContent="Saving product…"; try{await ownerFetch("/api/admin/products",{method:"POST",body:JSON.stringify({product:$("#ownerProduct").value,url:$("#ownerUrl").value,game:$("#ownerGame").value,msrp:$("#ownerMsrp").value||null,priority:$("#ownerPriority").value,max_markup:$("#ownerMaxMarkup").value||80,area:"Online"})}); event.target.reset(); await showOwner(); loadFeed();}catch(error){$("#ownerMessage").textContent=error.message;}});
+$("#productForm").addEventListener("submit",async event=>{event.preventDefault(); $("#ownerMessage").textContent="Saving product…"; try{await ownerFetch("/api/admin/products",{method:"POST",body:JSON.stringify({product:$("#ownerProduct").value,url:$("#ownerUrl").value,game:$("#ownerGame").value,set_name:$("#ownerSet").value,product_type:$("#ownerProductType").value,packs:$("#ownerPacks").value||null,msrp:$("#ownerMsrp").value||null,priority:$("#ownerPriority").value,max_markup:$("#ownerMaxMarkup").value||80,area:"Online"})}); event.target.reset(); await showOwner(); loadFeed();}catch(error){$("#ownerMessage").textContent=error.message;}});
 
 const PERSONAL_MARKUP_KEY="tcg-radar-personal-markup";
 const ALERT_GAMES_KEY="tcg-radar-alert-games";
