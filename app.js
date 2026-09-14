@@ -2,6 +2,7 @@
 const $ = s => document.querySelector(s);
 let rows = [];
 let deferredPrompt = null;
+let viewMode = "online";
 const API_BASE = location.hostname.endsWith("github.io")
   ? "https://tcg-restock-radar-production.up.railway.app/"
   : "";
@@ -34,7 +35,8 @@ function render(){
 
   const filtered=rows.filter(x=>{
     const m=markupPct(x);
-    return (game==="all"||x.game===game) &&
+    return (viewMode==="online"||x.area==="Local") &&
+           (game==="all"||x.game===game) &&
            (area==="all"||x.area===area) &&
            (retailer==="all"||x.store===retailer) &&
            (status==="all"||x.status===status) &&
@@ -69,8 +71,31 @@ function render(){
   }
   $("#resultCount").textContent=filtered.length;
   $("#msrpCount").textContent=filtered.filter(x=>markupPct(x)!=null&&markupPct(x)<=0).length;
-  if(!filtered.length) $("#results").innerHTML=`<div class="status card">No drops match the current filters.</div>`;
+  if(!filtered.length) $("#results").innerHTML=`<div class="status card">${viewMode==="local"?"No nearby products with confirmed local inventory are available yet.":"No drops match the current filters."}</div>`;
 }
+
+function setMode(mode){
+  viewMode=mode;
+  const online=mode==="online";
+  $("#onlineModeBtn").classList.toggle("secondary",!online); $("#localModeBtn").classList.toggle("secondary",online);
+  $("#onlineModeBtn").setAttribute("aria-selected",String(online)); $("#localModeBtn").setAttribute("aria-selected",String(!online));
+  $("#localPanel").hidden=online;
+  $("#statusBox").textContent=online?"":"Choose a radius and allow location access to begin a nearby search.";
+  render();
+}
+
+$("#onlineModeBtn").addEventListener("click",()=>setMode("online"));
+$("#localModeBtn").addEventListener("click",()=>setMode("local"));
+$("#useLocationBtn").addEventListener("click",()=>{
+  const status=$("#locationStatus");
+  if(!navigator.geolocation){status.textContent="This browser does not support location services.";return;}
+  status.textContent="Requesting your location…";
+  navigator.geolocation.getCurrentPosition(position=>{
+    localStorage.setItem("tcg-radar-location",JSON.stringify({latitude:position.coords.latitude,longitude:position.coords.longitude,radius:Number($("#radiusFilter").value),saved_at:new Date().toISOString()}));
+    status.textContent=`Location ready. Searching within ${$("#radiusFilter").value} miles.`;
+    render();
+  },error=>{status.textContent=error.code===1?"Location permission was denied. You can enable it in Chrome site settings.":"We couldn’t determine your location. Try again.";},{enableHighAccuracy:false,maximumAge:300000,timeout:10000});
+});
 
 async function loadFeed(){
   $("#statusBox").textContent="Checking latest feed…";
