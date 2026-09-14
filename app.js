@@ -3,6 +3,8 @@ const $ = s => document.querySelector(s);
 let rows = [];
 let deferredPrompt = null;
 let viewMode = "online";
+let initialFeedRendered = false;
+const SEEN_ALERTS_KEY = "tcg-radar-seen-alerts";
 const visitorId=localStorage.getItem("tcg-radar-visitor")||crypto.randomUUID(); localStorage.setItem("tcg-radar-visitor",visitorId);
 const API_BASE = location.hostname.endsWith("github.io")
   ? "https://tcg-restock-radar-production.up.railway.app/"
@@ -69,8 +71,14 @@ function render(){
     node.querySelector(".checked").textContent=item.notification_at?`🔔 Last notification ${new Date(item.notification_at).toLocaleString()} • checked ${item.checked_at?new Date(item.checked_at).toLocaleTimeString():"—"}`:item.checked_at?`Last checked ${new Date(item.checked_at).toLocaleString()}`:"";
     const buy=node.querySelector(".buy"); buy.href=retailerHref(item); buy.textContent=/Android/i.test(navigator.userAgent)&&["Amazon","Walmart","Target","Best Buy"].includes(item.store)?`Open in ${item.store} app`:`Open ${item.store} listing`;
     node.querySelector(".report").onclick=async()=>{ const reason=prompt("What is wrong? Enter false alert, wrong price, broken link, or other.","false alert"); if(!reason)return; const normalized=reason.trim().toLowerCase().replace(/\s+/g,"_"); const allowed={"false_alert":"false_alert","wrong_price":"wrong_price","broken_link":"broken_link","other":"other"}; try{const response=await fetch(api("/api/reports"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({product_id:item.id,reason:allowed[normalized]||"other"})}); if(!response.ok)throw new Error("Report could not be saved"); alert("Thanks—your report was saved for review.");}catch(error){alert(error.message);} };
+    const alertKey=item.notification_at?`${item.id}|${item.notification_at}`:"";
+    const seen=new Set(JSON.parse(localStorage.getItem(SEEN_ALERTS_KEY)||"[]"));
+    if(initialFeedRendered&&alertKey&&!seen.has(alertKey)) node.querySelector(".drop").classList.add("is-new");
+    if(alertKey) seen.add(alertKey);
+    localStorage.setItem(SEEN_ALERTS_KEY,JSON.stringify([...seen].slice(-200)));
     $("#results").appendChild(node);
   }
+  initialFeedRendered=true;
   $("#resultCount").textContent=filtered.length;
   $("#msrpCount").textContent=filtered.filter(x=>markupPct(x)!=null&&markupPct(x)<=0).length;
   const confirmed=rows.filter(x=>x.status==="in_stock");
@@ -267,6 +275,15 @@ async function loadPush(){
 }
 $("#alertSettingsBtn").addEventListener("click",()=>{ $("#personalMarkup").value=String(personalMarkup()); $("#alertSettingsMessage").textContent=""; $("#alertSettingsDialog").showModal(); });
 $("#alertSettingsForm").addEventListener("submit",async event=>{ event.preventDefault(); localStorage.setItem(PERSONAL_MARKUP_KEY,$("#personalMarkup").value); try{ const registration=await navigator.serviceWorker.ready; const subscription=await registration.pushManager.getSubscription(); if(subscription) await savePushSubscription(subscription); $("#alertSettingsMessage").textContent="Saved for this phone."; setTimeout(()=>$("#alertSettingsDialog").close(),500); }catch(error){ $("#alertSettingsMessage").textContent=`Saved here. ${error.message}`; } });
+
+function activateNav(button){
+  document.querySelectorAll(".bottom-nav button").forEach(item=>item.classList.toggle("active",item===button));
+}
+$("#navRadarBtn").addEventListener("click",()=>{activateNav($("#navRadarBtn"));setMode("online");window.scrollTo({top:0,behavior:"smooth"});});
+$("#navAlertsBtn").addEventListener("click",()=>{activateNav($("#navAlertsBtn"));$("#alertHistory").closest(".alerts-panel").classList.add("nav-open");$("#alertHistory").closest(".alerts-panel").scrollIntoView({behavior:"smooth",block:"start"});});
+$("#navNearbyBtn").addEventListener("click",()=>{activateNav($("#navNearbyBtn"));setMode("local");$("#localPanel").scrollIntoView({behavior:"smooth",block:"start"});});
+$("#navCollectionBtn").addEventListener("click",()=>{activateNav($("#navCollectionBtn"));$("#purchasesBtn").click();});
+$("#navMoreBtn").addEventListener("click",()=>{activateNav($("#navMoreBtn"));$(".quick-actions").classList.toggle("revealed");$(".quick-actions").scrollIntoView({behavior:"smooth",block:"start"});});
 
 const WELCOME_GUIDE_KEY="tcg-radar-welcome-guide-dismissed";
 if(localStorage.getItem(WELCOME_GUIDE_KEY)) $("#welcomeGuide").hidden=true;
