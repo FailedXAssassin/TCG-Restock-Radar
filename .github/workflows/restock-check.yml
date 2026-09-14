@@ -2,8 +2,7 @@ name: TCG Restock Check
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "*/5 * * * *"
+  # Automatic checks run on Railway now. Keep this manual for diagnostics.
 
 permissions:
   contents: write
