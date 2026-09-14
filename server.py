@@ -47,7 +47,6 @@ retailer_health = {}
 MEANINGFUL_TRANSITIONS = {
     ("unknown", "loaded"), ("loaded", "in_stock"),
     ("sold_out", "in_stock"), ("unknown", "in_stock"),
-    ("unknown", "invitation"), ("sold_out", "invitation"),
 }
 
 scheduler_task = None
@@ -847,7 +846,9 @@ async def check_product(source):
             )
 
         if invitation_signal(response.text):
-            status = "invitation"
+            # Invitation-only is not purchasable stock. Keep the listing quiet
+            # and unconfirmed so it cannot generate a false restock push.
+            status = "unknown"
             price = None
         quantity = detect_quantity(
             response.text
