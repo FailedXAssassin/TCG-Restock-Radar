@@ -42,6 +42,12 @@ USER_AGENT = (
 products = {}
 retailer_health = {}
 
+MEANINGFUL_TRANSITIONS = {
+    ("unknown", "loaded"), ("loaded", "in_stock"),
+    ("sold_out", "in_stock"), ("unknown", "in_stock"),
+    ("unknown", "invitation"), ("sold_out", "invitation"),
+}
+
 scheduler_task = None
 http_client = None
 
@@ -385,8 +391,7 @@ async def notify_transition(item):
     if not push_ready() or not item.get("status_changed"):
         return
     previous, current = item.get("previous_status"), item.get("status")
-    meaningful = {("unknown", "loaded"), ("loaded", "in_stock"), ("sold_out", "in_stock"), ("unknown", "in_stock"), ("unknown", "invitation"), ("sold_out", "invitation")}
-    if (previous, current) not in meaningful:
+    if (previous, current) not in MEANINGFUL_TRANSITIONS:
         return
     markup = safe_float(item.get("markup"))
     payload = {
@@ -475,10 +480,14 @@ def detect_quantity(text):
     return None
 
 
+def invitation_signal(text):
+    page = text.lower()
+    return bool(re.search(r"(?:request|requires?|need|join)[\s_-]*(?:an?\s+)?invitation|invitation[\s_-]*(?:request|required|only)|invite[\s_-]*only|request[\s_-]*(?:an?\s+)?invite|join[\s_-]*(?:the\s+)?waitlist", page))
+
+
 def detect_status(status_code, text, store=None):
     page = text.lower()
-    invitation_only = ("request an invitation", "request invitation", "invitation required", "invite-only", "invite only")
-    if any(signal in page for signal in invitation_only):
+    if invitation_signal(page):
         return "invitation"
 
     if status_code == 404:
@@ -718,7 +727,7 @@ async def check_product(source):
                 response.text
             )
 
-        if any(signal in response.text.lower() for signal in ("request an invitation", "request invitation", "invitation required", "invite-only", "invite only")):
+        if invitation_signal(response.text):
             status = "invitation"
             price = None
         quantity = detect_quantity(
@@ -766,6 +775,10 @@ async def check_product(source):
             and old_status != status
         )
 
+        checked_at = now_iso()
+        notification_at = previous.get("notification_at")
+        if (old_status, status) in MEANINGFUL_TRANSITIONS:
+            notification_at = checked_at
         products[product_key] = {
             "id": product_key,
             "game": source.get(
@@ -802,7 +815,9 @@ async def check_product(source):
             "base_interval_seconds": interval_for(
                 source
             ),
-            "checked_at": now_iso(),
+            "checked_at": checked_at,
+            "first_seen_at": previous.get("first_seen_at") or checked_at,
+            "notification_at": notification_at,
             "response_ms": elapsed_ms,
             "http_status": response.status_code,
             "seller": parser_result.get("seller") if parser_result else store,
@@ -861,6 +876,8 @@ async def check_product(source):
                 source
             ),
             "checked_at": now_iso(),
+            "first_seen_at": previous.get("first_seen_at") or now_iso(),
+            "notification_at": previous.get("notification_at"),
             "response_ms": None,
             "http_status": None,
             "evidence": f"Check failed: {exc}",
@@ -1036,13 +1053,9 @@ async def feed():
         products.values()
     )
 
-    items.sort(
-        key=lambda item: item.get(
-            "checked_at",
-            "",
-        ),
-        reverse=True,
-    )
+    # Notification activity gets priority; otherwise retain first-seen order
+    # so routine background checks never reshuffle the product list.
+    items.sort(key=lambda item: (item.get("notification_at") or "", item.get("first_seen_at") or ""), reverse=True)
 
     counts = {
         "total": len(items),
@@ -1273,3 +1286,4 @@ async def test_push(authorization: str = Header(default="")):
     if attempted:
         asyncio.create_task(_broadcast_test_push())
     return {"attempted": attempted, "scheduled_delay_seconds": 10}
+
