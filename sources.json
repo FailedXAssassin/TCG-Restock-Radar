@@ -31,5 +31,53 @@
     "msrp": 11.99,
     "max_markup": 80,
     "priority": "high"
-    }
+  },
+  {
+    "enabled": true,
+    "game": "Pokemon",
+    "area": "Online",
+    "store": "Target",
+    "product": "Pokémon TCG: Scarlet & Violet—151 Elite Trainer Box",
+    "url": "https://www.target.com/p/pokemon-trading-card-game-scarlet-38-violet-151-elite-trainer-box/-/A-88897899",
+    "msrp": 49.99,
+    "max_markup": 80,
+    "priority": "normal",
+    "official_seller_only": true
+  },
+  {
+    "enabled": true,
+    "game": "Pokemon",
+    "area": "Online",
+    "store": "Target",
+    "product": "Pokémon TCG: Scarlet & Violet—Shrouded Fable Elite Trainer Box",
+    "url": "https://www.target.com/p/pok-233-mon-trading-card-game-scarlet-38-violet-8212-shrouded-fable-elite-trainer-box/-/A-91600215",
+    "msrp": 49.99,
+    "max_markup": 80,
+    "priority": "normal",
+    "official_seller_only": true
+  },
+  {
+    "enabled": true,
+    "game": "Pokemon",
+    "area": "Online",
+    "store": "Target",
+    "product": "Pokémon TCG: Scarlet & Violet—Stellar Crown Elite Trainer Box",
+    "url": "https://www.target.com/p/pok-233-mon-trading-card-game-scarlet-38-violet-stellar-crown-elite-trainer-box/-/A-91619912",
+    "msrp": 49.99,
+    "max_markup": 80,
+    "priority": "normal",
+    "official_seller_only": true
+  },
+  {
+    "enabled": true,
+    "game": "Pokemon",
+    "area": "Online",
+    "store": "Target",
+    "product": "Pokémon TCG: Mega Evolution—Ascended Heroes Elite Trainer Box",
+    "url": "https://www.target.com/p/2025-pok-me-2-5-elite-trainer-box/-/A-95082118",
+    "msrp": 59.99,
+    "max_markup": 80,
+    "priority": "normal",
+    "official_seller_only": true
+  }
 ]
