@@ -375,7 +375,11 @@ def _clean_push_preferences(payload):
     max_markup = safe_float(payload.get("max_markup"), 80)
     if max_markup is None or max_markup < 0 or max_markup > 999:
         raise HTTPException(status_code=422, detail="Alert markup must be between 0 and 999 percent")
-    return {"max_markup": max_markup}
+    allowed_games = {"Pokemon", "One Piece", "Magic", "Other"}
+    allowed_stores = {"Walmart", "Target", "Amazon", "Best Buy", "GameStop"}
+    games = [str(item) for item in payload.get("games", []) if str(item) in allowed_games]
+    stores = [str(item) for item in payload.get("stores", []) if str(item) in allowed_stores]
+    return {"max_markup": max_markup, "games": games, "stores": stores}
 
 
 def _alert_history():
@@ -522,6 +526,10 @@ async def notify_transition(item):
     expired = []
     for subscription in _subscriptions():
         preference = _clean_push_preferences(subscription.get("preferences"))
+        if preference["games"] and item.get("game") not in preference["games"]:
+            continue
+        if preference["stores"] and item.get("store") not in preference["stores"]:
+            continue
         if current == "in_stock" and markup is not None and markup > preference["max_markup"]:
             continue
         if await asyncio.to_thread(_send_web_push, subscription, payload):
