@@ -149,11 +149,26 @@ async function loadAlerts(){
   }catch(_){list.innerHTML="<small>Notification history is temporarily unavailable.</small>";}
 }
 
+const HELP_THREAD_KEY="tcg-radar-help-thread";
+const HELP_CLIENT_KEY="tcg-radar-help-client";
+const helpThread=localStorage.getItem(HELP_THREAD_KEY)||crypto.randomUUID();
+const helpClient=localStorage.getItem(HELP_CLIENT_KEY)||crypto.randomUUID();
+localStorage.setItem(HELP_THREAD_KEY,helpThread); localStorage.setItem(HELP_CLIENT_KEY,helpClient);
+async function loadHelpThread(){
+  const list=$("#helpMessages");
+  try{const data=await fetch(api(`/api/help/messages?thread_id=${encodeURIComponent(helpThread)}`),{cache:"no-store"}).then(r=>r.json()); list.innerHTML=""; if(!(data.items||[]).length){list.innerHTML="<small>No messages yet.</small>";return;} for(const item of data.items){const bubble=document.createElement("div"); bubble.className=`help-bubble ${item.sender}`; const body=document.createElement("p"); body.textContent=item.body; const time=document.createElement("small"); time.textContent=`${item.sender==="owner"?"TCG Radar":"You"} • ${new Date(item.created_at).toLocaleString()}`; bubble.append(body,time); list.appendChild(bubble);}}
+  catch(_){list.innerHTML="<small>Chat is temporarily unavailable.</small>";}
+}
+$("#helpBtn").addEventListener("click",()=>{$("#helpDialog").showModal();loadHelpThread();});
+$("#closeHelpBtn").addEventListener("click",()=>$("#helpDialog").close());
+$("#helpForm").addEventListener("submit",async event=>{event.preventDefault(); const body=$("#helpBody").value.trim(); if(!body)return; $("#helpMessage").textContent="Sending…"; try{await fetch(api("/api/help/messages"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({thread_id:helpThread,client_id:helpClient,body})}).then(async response=>{if(!response.ok)throw new Error((await response.json().catch(()=>({}))).detail||"Message could not be sent");}); $("#helpBody").value=""; $("#helpMessage").textContent="Sent. I’ll reply when I can."; await loadHelpThread();}catch(error){$("#helpMessage").textContent=error.message;}});
+
 ["gameFilter","areaFilter","retailerFilter","statusFilter","markupFilter","quantityFilter","searchInput"].forEach(id=>$("#"+id).addEventListener("input",render));
 $("#refreshBtn").addEventListener("click",loadFeed);
 const ADMIN_KEY="tcg-radar-manager-secret";
 const MANAGER_MODE_KEY="tcg-radar-manager-mode";
 let managerRole="";
+let helpPollTimer=null, lastHelpMessageId="";
 function updateManagerButton(){ $("#ownerBtn").hidden=!(location.search.includes("manager=1")||sessionStorage.getItem(ADMIN_KEY)||localStorage.getItem(MANAGER_MODE_KEY)); }
 updateManagerButton();
 function api(path){ return `${API_BASE}${path.replace(/^\//,"")}`; }
@@ -167,7 +182,7 @@ async function ownerFetch(path, options={}){
 }
 async function loadManagerControls(){
   $("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true;
-  try{const data=await ownerFetch("/api/admin/products"); managerRole=data.role||""; localStorage.setItem(MANAGER_MODE_KEY,"1"); updateManagerButton(); $("#managerLogin").hidden=true; $("#productForm").hidden=false; $("#ownerOnlyControls").hidden=managerRole!=="owner"; renderOwnerProducts(data.items||[], managerRole==="owner"); if(managerRole==="owner") await loadModerators(); $("#ownerMessage").textContent=managerRole==="owner"?"Owner access: messages and moderator controls are available.":"Moderator access: you can add and remove public product URLs.";}
+  try{const data=await ownerFetch("/api/admin/products"); managerRole=data.role||""; localStorage.setItem(MANAGER_MODE_KEY,"1"); updateManagerButton(); $("#managerLogin").hidden=true; $("#productForm").hidden=false; $("#ownerOnlyControls").hidden=managerRole!=="owner"; renderOwnerProducts(data.items||[], managerRole==="owner"); if(managerRole==="owner"){await loadModerators(); await loadHelpInbox(); clearInterval(helpPollTimer); helpPollTimer=setInterval(loadHelpInbox,20000);} $("#ownerMessage").textContent=managerRole==="owner"?"Owner access: messages and moderator controls are available.":"Moderator access: you can add and remove public product URLs.";}
   catch(error){sessionStorage.removeItem(ADMIN_KEY); $("#managerLogin").hidden=false; $("#ownerMessage").textContent=error.message;}
 }
 function showOwner(){
@@ -177,6 +192,11 @@ function showOwner(){
 $("#cancelManager").addEventListener("click",()=>{ $("#ownerDialog").close(); });
 $("#unlockManager").addEventListener("click",async()=>{const code=$("#managerCode").value.trim(); if(!code){$("#ownerMessage").textContent="Enter a manager code first."; return;} sessionStorage.setItem(ADMIN_KEY,code); $("#ownerMessage").textContent="Checking code…"; await loadManagerControls();});
 $("#lockManagerBtn").addEventListener("click",()=>{sessionStorage.removeItem(ADMIN_KEY); localStorage.removeItem(MANAGER_MODE_KEY); managerRole=""; updateManagerButton(); $("#managerLogin").hidden=false; $("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true; $("#managerCode").value=""; $("#ownerMessage").textContent="Manager controls locked.";});
+async function loadHelpInbox(){
+  try{const items=(await ownerFetch("/api/admin/help")).items||[]; const list=$("#ownerHelp"); list.innerHTML=""; if(!items.length){list.innerHTML="<small>No help messages yet.</small>";return;} const threads=new Map(); for(const item of items){if(!threads.has(item.thread_id))threads.set(item.thread_id,item);} for(const item of threads.values()){const row=document.createElement("div"); row.className="owner-help-row"; const message=document.createElement("small"); message.textContent=`${item.body} • ${new Date(item.created_at).toLocaleString()}`; const reply=document.createElement("textarea"); reply.rows=2; reply.maxLength=1000; reply.placeholder="Reply to this user…"; const button=document.createElement("button"); button.type="button"; button.textContent="Reply"; button.onclick=async()=>{if(!reply.value.trim())return; await ownerFetch(`/api/admin/help/${encodeURIComponent(item.thread_id)}/reply`,{method:"POST",body:JSON.stringify({body:reply.value})}); reply.value=""; await loadHelpInbox();}; row.append(message,reply,button); list.appendChild(row); if(lastHelpMessageId&&item.id!==lastHelpMessageId&&item.sender==="user"&&Notification.permission==="granted")new Notification("TCG Radar help request",{body:item.body}); lastHelpMessageId=item.id;}}
+  catch(error){$("#ownerMessage").textContent=error.message;}
+}
+$("#loadHelpBtn").addEventListener("click",loadHelpInbox);
 function renderOwnerProducts(items,isOwner){
   $("#ownerProducts").innerHTML="";
   for(const item of items){
