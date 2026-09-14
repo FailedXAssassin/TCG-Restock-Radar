@@ -139,3 +139,5 @@ body:before{right:50%;bottom:12vh;transform:translateX(50%);width:min(82vw,460px
 .local-results{grid-column:1/-1;margin-top:4px}
 
 .report-options{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:16px 0}.report-options button{font-size:.82rem;padding:12px 9px}
+
+.filter-actions{display:flex;justify-content:flex-end;gap:8px;padding:0 14px 14px}.filter-actions button{padding:10px 12px;font-size:.78rem}
