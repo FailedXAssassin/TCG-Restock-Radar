@@ -6,7 +6,7 @@ import re
 from datetime import date
 
 
-PARSER_VERSION = "2026.09.14.2"
+PARSER_VERSION = "2026.09.14.3"
 
 
 def _next_data(text):
@@ -136,6 +136,18 @@ def parse_walmart(text, expected_item_id=None):
     }
 
 
+def _target_is_direct(product, fulfillment_sections):
+    """Target Plus listings must never be treated as Target-owned inventory."""
+    serialized = json.dumps([product, fulfillment_sections]).lower()
+    marketplace_markers = (
+        r'"is_target_plus"\s*:\s*true',
+        r'"is_third_party"\s*:\s*true',
+        r'"seller_type"\s*:\s*"?(?:external|marketplace)',
+        r'"fulfillment_type"\s*:\s*"?(?:marketplace|third_party)',
+    )
+    return not any(re.search(pattern, serialized) for pattern in marketplace_markers)
+
+
 def parse_target(text, expected_tcin=None, today=None):
     data = _next_data(text)
     if not data:
@@ -174,8 +186,11 @@ def parse_target(text, expected_tcin=None, today=None):
     # recommended item's price can never be attached to this TCIN.
     price = _target_price([product, fulfillment_sections])
     if any(x in available_words for x in status_values):
+        if not _target_is_direct(product, fulfillment_sections):
+            return {"status": "marketplace_in_stock", "price": price, "seller": "Target Plus marketplace",
+                    "evidence": "Target fulfillment data is available from a third-party seller", "parser_version": PARSER_VERSION}
         return {"status": "in_stock", "price": price, "seller": "Target",
-                "evidence": "Target fulfillment data reports availability", "parser_version": PARSER_VERSION}
+                "evidence": "Target-owned fulfillment data reports availability", "parser_version": PARSER_VERSION}
     if status_values and all(x in unavailable_words for x in status_values):
         return {"status": "sold_out", "price": price, "seller": "Target",
                 "evidence": "Target fulfillment data reports unavailable", "parser_version": PARSER_VERSION}
