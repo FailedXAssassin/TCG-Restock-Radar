@@ -3,6 +3,7 @@ const $ = s => document.querySelector(s);
 let rows = [];
 let deferredPrompt = null;
 let viewMode = "online";
+let activePage = "radar";
 let initialFeedRendered = false;
 const SEEN_ALERTS_KEY = "tcg-radar-seen-alerts";
 const visitorId=localStorage.getItem("tcg-radar-visitor")||crypto.randomUUID(); localStorage.setItem("tcg-radar-visitor",visitorId);
@@ -94,7 +95,7 @@ function setMode(mode){
   const online=mode==="online";
   $("#onlineModeBtn").classList.toggle("secondary",!online); $("#localModeBtn").classList.toggle("secondary",online);
   $("#onlineModeBtn").setAttribute("aria-selected",String(online)); $("#localModeBtn").setAttribute("aria-selected",String(!online));
-  $("#localPanel").hidden=online;
+  $("#localPanel").hidden=online || activePage!=="nearby";
   $("#statusBox").textContent=online?"":"Choose a radius and allow location access to begin a nearby search.";
   render();
 }
@@ -183,7 +184,9 @@ let googleToken=sessionStorage.getItem("tcg-radar-google-token")||"", accountUse
 function accountHeaders(){return googleToken?{Authorization:`Bearer ${googleToken}`}:{};}
 async function renderPurchases(){const list=$("#purchaseList"); list.innerHTML=""; if(!googleToken){$("#purchaseForm").hidden=true;$("#signOutBtn").hidden=true;$("#accountStatus").textContent="Sign in with Google to save purchases across devices.";return;} try{const response=await fetch(api("/api/purchases"),{headers:accountHeaders(),cache:"no-store"}); if(!response.ok)throw new Error("Your Google session expired. Please sign in again."); const items=(await response.json()).items||[]; $("#purchaseForm").hidden=false;$("#signOutBtn").hidden=false;$("#accountStatus").textContent=accountUser?`Signed in as ${accountUser.email}`:"Signed in with Google";$("#purchaseTotal").textContent=new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(items.reduce((sum,item)=>sum+Number(item.paid||0),0)); if(!items.length){list.innerHTML="<small>No purchases logged yet.</small>";return;} for(const item of items){const row=document.createElement("div"); row.className="purchase-row"; const info=document.createElement("span"); const title=document.createElement("strong"); title.textContent=`${item.name} × ${item.quantity}`; const detail=document.createElement("small"); detail.textContent=`${item.retailer||"Retailer not listed"} • ${item.date||"Date not listed"} • ${money(item.paid)}`; info.append(title,detail); const remove=document.createElement("button"); remove.className="remove"; remove.type="button"; remove.textContent="Remove"; remove.onclick=async()=>{await fetch(api(`/api/purchases/${encodeURIComponent(item.id)}`),{method:"DELETE",headers:accountHeaders()});renderPurchases();}; row.append(info,remove); list.appendChild(row);}}catch(error){googleToken="";sessionStorage.removeItem("tcg-radar-google-token");$("#accountStatus").textContent=error.message;$("#purchaseForm").hidden=true;}}
 async function configureGoogleSignIn(){try{const config=await fetch(api("/api/auth/config"),{cache:"no-store"}).then(r=>r.json()); if(!config.enabled){$("#accountStatus").textContent="Google sign-in is being configured.";return;} if(googleToken){accountUser=await fetch(api("/api/auth/me"),{headers:accountHeaders()}).then(r=>r.ok?r.json():null);if(accountUser){renderPurchases();return;}googleToken="";sessionStorage.removeItem("tcg-radar-google-token");} if(!window.google?.accounts?.id){setTimeout(configureGoogleSignIn,500);return;} window.google.accounts.id.initialize({client_id:config.client_id,callback:credential=>{googleToken=credential.credential;sessionStorage.setItem("tcg-radar-google-token",googleToken);fetch(api("/api/auth/me"),{headers:accountHeaders()}).then(r=>r.json()).then(user=>{accountUser=user;renderPurchases();});}});$("#googleSignIn").innerHTML="";window.google.accounts.id.renderButton($("#googleSignIn"),{theme:"filled_black",size:"large",shape:"pill",text:"signin_with"});}catch(_){$("#accountStatus").textContent="Google sign-in is temporarily unavailable.";}}
-$("#purchasesBtn").addEventListener("click",()=>{$("#purchasesDialog").showModal();$("#purchaseDate").value=new Date().toISOString().slice(0,10);configureGoogleSignIn();renderPurchases();});
+function openPurchases(){ $("#purchasesDialog").showModal(); $("#purchaseDate").value=new Date().toISOString().slice(0,10); configureGoogleSignIn(); renderPurchases(); }
+$("#purchasesBtn").addEventListener("click",openPurchases);
+$("#openPurchasePage").addEventListener("click",openPurchases);
 $("#closePurchasesBtn").addEventListener("click",()=>$("#purchasesDialog").close());
 $("#signOutBtn").addEventListener("click",()=>{googleToken="";accountUser=null;sessionStorage.removeItem("tcg-radar-google-token");$("#googleSignIn").innerHTML="";configureGoogleSignIn();renderPurchases();});
 $("#purchaseForm").addEventListener("submit",async event=>{event.preventDefault();const item={name:$("#purchaseName").value.trim(),quantity:Math.max(1,Number($("#purchaseQty").value||1)),paid:Number($("#purchasePaid").value||0),retailer:$("#purchaseRetailer").value.trim(),date:$("#purchaseDate").value,notes:$("#purchaseNotes").value.trim()};const response=await fetch(api("/api/purchases"),{method:"POST",headers:{"Content-Type":"application/json",...accountHeaders()},body:JSON.stringify(item)});if(!response.ok){$("#accountStatus").textContent=(await response.json().catch(()=>({}))).detail||"Purchase could not be saved";return;}event.target.reset();$("#purchaseQty").value="1";renderPurchases();});
@@ -276,14 +279,21 @@ async function loadPush(){
 $("#alertSettingsBtn").addEventListener("click",()=>{ $("#personalMarkup").value=String(personalMarkup()); $("#alertSettingsMessage").textContent=""; $("#alertSettingsDialog").showModal(); });
 $("#alertSettingsForm").addEventListener("submit",async event=>{ event.preventDefault(); localStorage.setItem(PERSONAL_MARKUP_KEY,$("#personalMarkup").value); try{ const registration=await navigator.serviceWorker.ready; const subscription=await registration.pushManager.getSubscription(); if(subscription) await savePushSubscription(subscription); $("#alertSettingsMessage").textContent="Saved for this phone."; setTimeout(()=>$("#alertSettingsDialog").close(),500); }catch(error){ $("#alertSettingsMessage").textContent=`Saved here. ${error.message}`; } });
 
-function activateNav(button){
-  document.querySelectorAll(".bottom-nav button").forEach(item=>item.classList.toggle("active",item===button));
+function switchPage(page){
+  activePage=page;
+  document.querySelectorAll("[data-page]").forEach(section=>{ section.hidden=section.dataset.page!==page; });
+  const navMap={radar:"#navRadarBtn",alerts:"#navAlertsBtn",nearby:"#navNearbyBtn",collection:"#navCollectionBtn",more:"#navMoreBtn"};
+  document.querySelectorAll(".bottom-nav button").forEach(button=>button.classList.toggle("active",button===$(navMap[page])));
+  if(page==="nearby") setMode("local");
+  if(page==="radar") setMode("online");
+  if(page==="alerts") loadAlerts();
+  window.scrollTo({top:0,behavior:"smooth"});
 }
-$("#navRadarBtn").addEventListener("click",()=>{activateNav($("#navRadarBtn"));setMode("online");window.scrollTo({top:0,behavior:"smooth"});});
-$("#navAlertsBtn").addEventListener("click",()=>{activateNav($("#navAlertsBtn"));$("#alertHistory").closest(".alerts-panel").classList.add("nav-open");$("#alertHistory").closest(".alerts-panel").scrollIntoView({behavior:"smooth",block:"start"});});
-$("#navNearbyBtn").addEventListener("click",()=>{activateNav($("#navNearbyBtn"));setMode("local");$("#localPanel").scrollIntoView({behavior:"smooth",block:"start"});});
-$("#navCollectionBtn").addEventListener("click",()=>{activateNav($("#navCollectionBtn"));$("#purchasesBtn").click();});
-$("#navMoreBtn").addEventListener("click",()=>{activateNav($("#navMoreBtn"));$(".quick-actions").classList.toggle("revealed");$(".quick-actions").scrollIntoView({behavior:"smooth",block:"start"});});
+$("#navRadarBtn").addEventListener("click",()=>switchPage("radar"));
+$("#navAlertsBtn").addEventListener("click",()=>switchPage("alerts"));
+$("#navNearbyBtn").addEventListener("click",()=>switchPage("nearby"));
+$("#navCollectionBtn").addEventListener("click",()=>switchPage("collection"));
+$("#navMoreBtn").addEventListener("click",()=>switchPage("more"));
 
 const WELCOME_GUIDE_KEY="tcg-radar-welcome-guide-dismissed";
 if(localStorage.getItem(WELCOME_GUIDE_KEY)) $("#welcomeGuide").hidden=true;
@@ -298,6 +308,7 @@ $("#installBtn").addEventListener("click",async()=>{
   deferredPrompt=null; $("#installBtn").hidden=true;
 });
 if("serviceWorker" in navigator) navigator.serviceWorker.register("service-worker.js");
+switchPage("radar");
 loadFeed();
 setInterval(loadFeed, 30000);
 
