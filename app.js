@@ -6,7 +6,7 @@ let watchlistOnly=false;
 const FILTER_IDS=["gameFilter","areaFilter","retailerFilter","statusFilter","markupFilter","quantityFilter","searchInput"];
 let appliedFilters={};
 function readFilters(){return Object.fromEntries(FILTER_IDS.map(id=>[id,$("#"+id).value]));}
-function setFilters(values){FILTER_IDS.forEach(id=>{$("#"+id).value=values[id]??"");}
+function setFilters(values){FILTER_IDS.forEach(id=>{$("#"+id).value=values[id]??"";});}
 function watchlist(){try{return new Set(JSON.parse(localStorage.getItem(WATCHLIST_KEY)||"[]"));}catch(_){return new Set();}}
 function saveWatchlist(items){localStorage.setItem(WATCHLIST_KEY,JSON.stringify([...items]));}
 let deferredPrompt = null;
