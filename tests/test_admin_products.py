@@ -53,6 +53,18 @@ class AdminProductTests(unittest.TestCase):
                 server._write_subscriptions([subscription])
                 self.assertEqual(server._subscriptions(), [subscription])
 
+    def test_moderator_code_has_limited_manager_role(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "moderators.json"
+            code = "moderator-code"
+            moderator = {"id": "mod-1", "name": "Marie", "secret_hash": server._token_hash(code)}
+            with patch.object(server, "MODERATORS_FILE", path), patch.object(server, "ADMIN_SECRET", "owner-code"):
+                server._write_moderators([moderator])
+                self.assertEqual(server.manager_role("Bearer owner-code"), "owner")
+                self.assertEqual(server.manager_role(f"Bearer {code}"), "moderator")
+                with self.assertRaises(HTTPException):
+                    server.manager_role("Bearer nope")
+
     def test_owner_secret_is_required(self):
         with patch.object(server, "ADMIN_SECRET", ""):
             with self.assertRaises(HTTPException) as error:

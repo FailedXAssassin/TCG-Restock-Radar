@@ -109,7 +109,7 @@
       <button id="refreshBtn">Refresh</button>
       <button id="notifyBtn" class="secondary">Enable Notifications</button>
       <button id="alertSettingsBtn" class="secondary">Alert Settings</button>
-      <button id="ownerBtn" class="secondary">Owner Tools</button>
+      <button id="ownerBtn" class="secondary">Manage Products</button>
     </section>
 
     <section id="statusBox" class="status card"></section>
@@ -163,7 +163,20 @@
         <div class="form-grid"><select id="ownerPriority"><option value="high">High priority</option><option value="normal" selected>Normal priority</option><option value="low">Low priority</option></select><input id="ownerMaxMarkup" type="number" min="0" max="1000" step="1" value="80" placeholder="Maximum markup %" /></div>
         <button type="submit">Add Product</button>
       </form>
-      <div class="owner-actions"><button id="testPushBtn" type="button" class="secondary">Send 10-sec Closed-App Test</button></div>
+      <section id="ownerOnlyControls" hidden>
+        <form id="announcementForm" class="product-form">
+          <h3>Push a message to everyone</h3>
+          <input id="announcementTitle" maxlength="70" placeholder="Message title" value="TCG Radar update" />
+          <input id="announcementBody" required maxlength="240" placeholder="Example: Target drop expected around 3 AM ET — good luck!" />
+          <button type="submit">Send member message</button>
+        </form>
+        <form id="moderatorForm" class="product-form">
+          <h3>Moderators</h3>
+          <div class="form-grid"><input id="moderatorName" required maxlength="60" placeholder="Moderator name" /><button type="submit">Create moderator code</button></div>
+        </form>
+        <div id="moderatorList" class="owner-products"></div>
+        <div class="owner-actions"><button id="testPushBtn" type="button" class="secondary">Send 10-sec Closed-App Test</button></div>
+      </section>
       <p id="ownerMessage" class="muted"></p>
       <div id="ownerProducts" class="owner-products"></div>
     </div>

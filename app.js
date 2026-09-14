@@ -99,31 +99,31 @@ async function loadHealth(){
 
 ["gameFilter","areaFilter","retailerFilter","statusFilter","markupFilter","quantityFilter","searchInput"].forEach(id=>$("#"+id).addEventListener("input",render));
 $("#refreshBtn").addEventListener("click",loadFeed);
-const ADMIN_KEY="tcg-radar-owner-secret";
+const ADMIN_KEY="tcg-radar-manager-secret";
+let managerRole="";
 function api(path){ return `${API_BASE}${path.replace(/^\//,"")}`; }
 async function ownerFetch(path, options={}){
   let secret=sessionStorage.getItem(ADMIN_KEY);
-  if(!secret){ secret=prompt("Enter your TCG Radar owner secret"); if(!secret) throw new Error("Owner secret is required"); sessionStorage.setItem(ADMIN_KEY,secret); }
+  if(!secret){ secret=prompt("Enter your TCG Radar owner or moderator code"); if(!secret) throw new Error("A manager code is required"); sessionStorage.setItem(ADMIN_KEY,secret); }
   const response=await fetch(api(path),{...options,headers:{Authorization:`Bearer ${secret}`,"Content-Type":"application/json",...(options.headers||{})}});
-  if(response.status===401){ sessionStorage.removeItem(ADMIN_KEY); throw new Error("That owner secret was not accepted"); }
+  if(response.status===401){ sessionStorage.removeItem(ADMIN_KEY); throw new Error("That owner or moderator code was not accepted"); }
   if(!response.ok){ const data=await response.json().catch(()=>({})); throw new Error(data.detail||`HTTP ${response.status}`); }
   return response.status===204?null:response.json();
 }
 async function showOwner(){
   $("#ownerDialog").showModal(); $("#ownerMessage").textContent="Loading monitored products…";
-  try{const data=await ownerFetch("/api/admin/products"); renderOwnerProducts(data.items||[]); $("#ownerMessage").textContent="Add a public retailer URL. New products start as unknown until their first safe check.";}
+  try{const data=await ownerFetch("/api/admin/products"); managerRole=data.role||""; $("#ownerOnlyControls").hidden=managerRole!=="owner"; renderOwnerProducts(data.items||[], managerRole==="owner"); if(managerRole==="owner") await loadModerators(); $("#ownerMessage").textContent=managerRole==="owner"?"Owner access: messages and moderator controls are available.":"Moderator access: you can add and remove public product URLs.";}
   catch(error){$("#ownerMessage").textContent=error.message;}
 }
-function renderOwnerProducts(items){
+function renderOwnerProducts(items,isOwner){
   $("#ownerProducts").innerHTML="";
   for(const item of items){
     const el=document.createElement("div"); el.className="owner-product";
-    el.innerHTML=`<span><strong></strong><small></small></span><div class="product-actions"><button type="button" class="toggle"></button><button type="button" class="remove">Remove</button></div>`;
+    el.innerHTML=`<span><strong></strong><small></small></span><div class="product-actions">${isOwner?'<button type="button" class="toggle"></button>':''}<button type="button" class="remove">Remove</button></div>`;
     el.querySelector("strong").textContent=item.product;
     el.querySelector("small").textContent=`${item.store} • ${item.priority} priority • alert at ≤ ${item.max_markup ?? 80}% markup`;
-    const toggle=el.querySelector(".toggle"); toggle.textContent=item.enabled===false?"Resume":"Pause";
-    toggle.classList.toggle("secondary",true);
-    toggle.onclick=async()=>{try{await ownerFetch(`/api/admin/products/${item.id}`,{method:"PATCH",body:JSON.stringify({enabled:item.enabled===false})}); await showOwner(); loadFeed();}catch(error){$("#ownerMessage").textContent=error.message;}};
+    const toggle=el.querySelector(".toggle");
+    if(toggle){ toggle.textContent=item.enabled===false?"Resume":"Pause"; toggle.classList.toggle("secondary",true); toggle.onclick=async()=>{try{await ownerFetch(`/api/admin/products/${item.id}`,{method:"PATCH",body:JSON.stringify({enabled:item.enabled===false})}); await showOwner(); loadFeed();}catch(error){$("#ownerMessage").textContent=error.message;}}; }
     el.querySelector(".remove").onclick=async()=>{if(!confirm(`Remove ${item.product}?`))return; try{await ownerFetch(`/api/admin/products/${item.id}`,{method:"DELETE"}); await showOwner(); loadFeed();}catch(error){$("#ownerMessage").textContent=error.message;}};
     $("#ownerProducts").appendChild(el);
   }
@@ -131,6 +131,9 @@ function renderOwnerProducts(items){
 $("#ownerBtn").addEventListener("click",showOwner);
 $("#closeOwnerBtn").addEventListener("click",()=>$("#ownerDialog").close());
 $("#testPushBtn").addEventListener("click",async()=>{ $("#ownerMessage").textContent="Test scheduled—close TCG Radar completely now."; try{const result=await ownerFetch("/api/admin/push/test",{method:"POST"}); $("#ownerMessage").textContent=result.attempted?"Test scheduled for 10 seconds. Close TCG Radar completely now.":"No phones are subscribed yet—tap Enable Push Alerts on the main screen first.";}catch(error){$("#ownerMessage").textContent=error.message;} });
+$("#announcementForm").addEventListener("submit",async event=>{event.preventDefault(); try{const result=await ownerFetch("/api/admin/announcements",{method:"POST",body:JSON.stringify({title:$("#announcementTitle").value,body:$("#announcementBody").value,url:location.href})}); $("#announcementBody").value=""; $("#ownerMessage").textContent=result.attempted?`Message sent to ${result.attempted} subscribed phone(s).`:"No phones are subscribed yet.";}catch(error){$("#ownerMessage").textContent=error.message;}});
+async function loadModerators(){try{const data=await ownerFetch("/api/admin/moderators"); const list=$("#moderatorList"); list.innerHTML=""; for(const moderator of data.items||[]){const row=document.createElement("div"); row.className="owner-product"; row.innerHTML=`<span><strong></strong><small>Can add and remove tracked URLs only</small></span><button type="button" class="remove">Remove</button>`; row.querySelector("strong").textContent=moderator.name; row.querySelector("button").onclick=async()=>{if(!confirm(`Remove ${moderator.name}'s moderator access?`))return; try{await ownerFetch(`/api/admin/moderators/${moderator.id}`,{method:"DELETE"}); await loadModerators();}catch(error){$("#ownerMessage").textContent=error.message;}}; list.appendChild(row);}}catch(error){$("#ownerMessage").textContent=error.message;}}
+$("#moderatorForm").addEventListener("submit",async event=>{event.preventDefault(); try{const result=await ownerFetch("/api/admin/moderators",{method:"POST",body:JSON.stringify({name:$("#moderatorName").value})}); $("#moderatorName").value=""; await loadModerators(); prompt(`Copy this one-time moderator code for ${result.name}. Send it privately; it will not be shown again.`,result.access_code);}catch(error){$("#ownerMessage").textContent=error.message;}});
 $("#productForm").addEventListener("submit",async event=>{event.preventDefault(); $("#ownerMessage").textContent="Saving product…"; try{await ownerFetch("/api/admin/products",{method:"POST",body:JSON.stringify({product:$("#ownerProduct").value,url:$("#ownerUrl").value,game:$("#ownerGame").value,msrp:$("#ownerMsrp").value||null,priority:$("#ownerPriority").value,max_markup:$("#ownerMaxMarkup").value||80,area:"Online"})}); event.target.reset(); await showOwner(); loadFeed();}catch(error){$("#ownerMessage").textContent=error.message;}});
 
 const PERSONAL_MARKUP_KEY="tcg-radar-personal-markup";

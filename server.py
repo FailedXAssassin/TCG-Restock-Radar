@@ -22,6 +22,7 @@ DEFAULT_SOURCES_FILE = ROOT / "sources.json"
 DATA_DIR = Path(os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", ROOT))
 SOURCES_FILE = Path(os.environ.get("TCG_RADAR_DATA_PATH", DATA_DIR / "sources.json"))
 PUSH_SUBSCRIPTIONS_FILE = Path(os.environ.get("TCG_RADAR_PUSH_SUBSCRIPTIONS_PATH", DATA_DIR / "push_subscriptions.json"))
+MODERATORS_FILE = Path(os.environ.get("TCG_RADAR_MODERATORS_PATH", DATA_DIR / "moderators.json"))
 ADMIN_SECRET = os.environ.get("TCG_RADAR_ADMIN_SECRET", "")
 VAPID_PUBLIC_KEY = os.environ.get("TCG_RADAR_VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = os.environ.get("TCG_RADAR_VAPID_PRIVATE_KEY", "")
@@ -158,6 +159,7 @@ def ensure_database():
         with connection.cursor() as cursor:
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_products (id TEXT PRIMARY KEY, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS push_subscriptions (endpoint TEXT PRIMARY KEY, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cursor.execute("CREATE TABLE IF NOT EXISTS radar_moderators (id TEXT PRIMARY KEY, name TEXT NOT NULL, secret_hash TEXT NOT NULL UNIQUE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("SELECT COUNT(*) FROM radar_products")
             if cursor.fetchone()[0] == 0:
                 for source in _file_sources():
@@ -242,6 +244,56 @@ def require_admin(authorization=Header(default="")):
     token = authorization.removeprefix("Bearer ").strip()
     if not token or not secrets.compare_digest(token, ADMIN_SECRET):
         raise HTTPException(status_code=401, detail="Owner secret is not valid")
+
+
+def _token_hash(token):
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _moderators():
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT id, name, secret_hash, created_at FROM radar_moderators ORDER BY created_at, id")
+                return [{"id": row[0], "name": row[1], "secret_hash": row[2], "created_at": row[3].isoformat()} for row in cursor.fetchall()]
+    if not MODERATORS_FILE.exists():
+        return []
+    try:
+        raw = json.loads(MODERATORS_FILE.read_text(encoding="utf-8"))
+        return raw if isinstance(raw, list) else []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _write_moderators(moderators):
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM radar_moderators")
+                for moderator in moderators:
+                    cursor.execute("INSERT INTO radar_moderators (id, name, secret_hash) VALUES (%s, %s, %s)", (moderator["id"], moderator["name"], moderator["secret_hash"]))
+            connection.commit()
+        return
+    temporary = MODERATORS_FILE.with_suffix(".tmp")
+    temporary.write_text(json.dumps(moderators, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(MODERATORS_FILE)
+
+
+def manager_role(authorization=Header(default="")):
+    if not ADMIN_SECRET:
+        raise HTTPException(status_code=503, detail="Manager controls are not configured yet")
+    token = authorization.removeprefix("Bearer ").strip()
+    if token and secrets.compare_digest(token, ADMIN_SECRET):
+        return "owner"
+    hashed = _token_hash(token) if token else ""
+    for moderator in _moderators():
+        if hashed and secrets.compare_digest(hashed, moderator.get("secret_hash", "")):
+            return "moderator"
+    raise HTTPException(status_code=401, detail="That owner or moderator code was not accepted")
+
+
+def require_product_manager(authorization=Header(default="")):
+    return manager_role(authorization)
 
 
 
@@ -1013,14 +1065,14 @@ async def admin_status(authorization: str = Header(default="")):
 
 @app.get("/api/admin/products")
 async def admin_products(authorization: str = Header(default="")):
-    require_admin(authorization)
+    role = require_product_manager(authorization)
     sources = _all_sources()
-    return {"items": [{**source, "id": source_id(source)} for source in sources]}
+    return {"role": role, "items": [{**source, "id": source_id(source)} for source in sources]}
 
 
 @app.post("/api/admin/products", status_code=201)
 async def add_product(payload: dict, authorization: str = Header(default="")):
-    require_admin(authorization)
+    require_product_manager(authorization)
     source = _clean_source(payload)
     sources = _all_sources()
     if any(source.get("url") == item.get("url") for item in sources):
@@ -1049,13 +1101,69 @@ async def update_product(product_id: str, payload: dict, authorization: str = He
 
 @app.delete("/api/admin/products/{product_id}", status_code=204)
 async def delete_product(product_id: str, authorization: str = Header(default="")):
-    require_admin(authorization)
+    require_product_manager(authorization)
     sources = _all_sources()
     remaining = [item for item in sources if source_id(item) != product_id]
     if len(remaining) == len(sources):
         raise HTTPException(status_code=404, detail="Monitored product was not found")
     products.pop(product_id, None)
     _write_sources(remaining)
+
+
+@app.get("/api/admin/moderators")
+async def list_moderators(authorization: str = Header(default="")):
+    require_admin(authorization)
+    return {"items": [{"id": moderator["id"], "name": moderator["name"], "created_at": moderator.get("created_at")} for moderator in _moderators()]}
+
+
+@app.post("/api/admin/moderators", status_code=201)
+async def add_moderator(payload: dict, authorization: str = Header(default="")):
+    require_admin(authorization)
+    name = str(payload.get("name", "")).strip()
+    if not 2 <= len(name) <= 60:
+        raise HTTPException(status_code=422, detail="Moderator name must be 2 to 60 characters")
+    access_code = secrets.token_urlsafe(18)
+    moderator = {"id": secrets.token_urlsafe(8), "name": name, "secret_hash": _token_hash(access_code)}
+    moderators = _moderators()
+    moderators.append(moderator)
+    _write_moderators(moderators)
+    return {"id": moderator["id"], "name": name, "access_code": access_code}
+
+
+@app.delete("/api/admin/moderators/{moderator_id}", status_code=204)
+async def delete_moderator(moderator_id: str, authorization: str = Header(default="")):
+    require_admin(authorization)
+    moderators = _moderators()
+    kept = [moderator for moderator in moderators if moderator.get("id") != moderator_id]
+    if len(kept) == len(moderators):
+        raise HTTPException(status_code=404, detail="Moderator was not found")
+    _write_moderators(kept)
+
+
+async def _broadcast_announcement(title, body, url):
+    payload = {"title": title, "body": body, "url": url, "tag": f"announcement-{int(time.time())}"}
+    expired = []
+    for subscription in _subscriptions():
+        if await asyncio.to_thread(_send_web_push, subscription, payload):
+            expired.append(subscription.get("endpoint"))
+    if expired:
+        _write_subscriptions([item for item in _subscriptions() if item.get("endpoint") not in expired])
+
+
+@app.post("/api/admin/announcements")
+async def announcement(payload: dict, authorization: str = Header(default="")):
+    require_admin(authorization)
+    if not push_ready():
+        raise HTTPException(status_code=503, detail="Push alerts are not configured yet")
+    title = str(payload.get("title", "TCG Radar update")).strip()[:70]
+    body = str(payload.get("body", "")).strip()[:240]
+    url = str(payload.get("url", "https://failedxassassin.github.io/TCG-Restock-Radar/")).strip()
+    if not title or not body or not url.startswith(("https://", "http://")):
+        raise HTTPException(status_code=422, detail="A title, message, and public link are required")
+    attempted = len(_subscriptions())
+    if attempted:
+        asyncio.create_task(_broadcast_announcement(title, body, url))
+    return {"attempted": attempted}
 
 
 @app.get("/api/push/config")
