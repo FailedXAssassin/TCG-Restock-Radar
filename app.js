@@ -3,6 +3,7 @@ const $ = s => document.querySelector(s);
 let rows = [];
 let deferredPrompt = null;
 let viewMode = "online";
+const visitorId=localStorage.getItem("tcg-radar-visitor")||crypto.randomUUID(); localStorage.setItem("tcg-radar-visitor",visitorId);
 const API_BASE = location.hostname.endsWith("github.io")
   ? "https://tcg-restock-radar-production.up.railway.app/"
   : "";
@@ -120,6 +121,7 @@ async function loadFeed(){
   loadHealth();
   loadAlerts();
   loadPush();
+  fetch(api("/api/visitors/heartbeat"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({client_id:visitorId})}).catch(()=>{});
 }
 
 async function loadHealth(){
@@ -206,6 +208,7 @@ async function loadHelpInbox(){
   catch(error){$("#ownerMessage").textContent=error.message;}
 }
 $("#loadHelpBtn").addEventListener("click",loadHelpInbox);
+$("#loadUsageBtn").addEventListener("click",async()=>{const d=await ownerFetch("/api/admin/usage");$("#ownerUsage").textContent=`Anonymous devices: ${d.anonymous_devices} • Google accounts: ${d.google_accounts} • Push devices: ${d.push_devices} • Help users: ${d.help_devices}`;});
 function renderOwnerProducts(items,isOwner){
   $("#ownerProducts").innerHTML="";
   for(const item of items){
