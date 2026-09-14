@@ -277,10 +277,19 @@ $("#moderatorForm").addEventListener("submit",async event=>{event.preventDefault
 $("#productForm").addEventListener("submit",async event=>{event.preventDefault(); $("#ownerMessage").textContent="Saving product…"; try{await ownerFetch("/api/admin/products",{method:"POST",body:JSON.stringify({product:$("#ownerProduct").value,url:$("#ownerUrl").value,game:$("#ownerGame").value,msrp:$("#ownerMsrp").value||null,priority:$("#ownerPriority").value,max_markup:$("#ownerMaxMarkup").value||80,area:"Online"})}); event.target.reset(); await showOwner(); loadFeed();}catch(error){$("#ownerMessage").textContent=error.message;}});
 
 const PERSONAL_MARKUP_KEY="tcg-radar-personal-markup";
+const ALERT_GAMES_KEY="tcg-radar-alert-games";
+const ALERT_STORES_KEY="tcg-radar-alert-stores";
 function personalMarkup(){ return Number(localStorage.getItem(PERSONAL_MARKUP_KEY)||80); }
+function storedChoices(key, fallback){try{const value=JSON.parse(localStorage.getItem(key)||"");return Array.isArray(value)&&value.length?value:fallback;}catch(_){return fallback;}}
+function alertPreferences(){return {max_markup:personalMarkup(),games:storedChoices(ALERT_GAMES_KEY,["Pokemon","One Piece","Magic"]),stores:storedChoices(ALERT_STORES_KEY,["Walmart","Target","Amazon","Best Buy"])};}
+function hydrateAlertChoices(){
+  const prefs=alertPreferences();
+  document.querySelectorAll("#settingsGames input").forEach(input=>input.checked=prefs.games.includes(input.value));
+  document.querySelectorAll("#settingsStores input").forEach(input=>input.checked=prefs.stores.includes(input.value));
+}
 function base64UrlToBytes(value){ const padded=value.replace(/-/g,"+").replace(/_/g,"/")+"=".repeat((4-value.length%4)%4); const raw=atob(padded); return Uint8Array.from(raw,c=>c.charCodeAt(0)); }
 async function savePushSubscription(subscription){
-  const response=await fetch(api("/api/push/subscribe"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({subscription,preferences:{max_markup:personalMarkup()}})});
+  const response=await fetch(api("/api/push/subscribe"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({subscription,preferences:alertPreferences()})});
   if(!response.ok){ const data=await response.json().catch(()=>({})); throw new Error(data.detail||"Could not save this device for alerts"); }
 }
 async function enablePush(){
@@ -308,6 +317,12 @@ async function savePersonalMarkup(value){
   try{const registration=await navigator.serviceWorker.ready;const subscription=await registration.pushManager.getSubscription();if(subscription) await savePushSubscription(subscription);}catch(_){}
 }
 $("#settingsMarkup").addEventListener("change",()=>savePersonalMarkup($("#settingsMarkup").value));
+["#settingsGames","#settingsStores"].forEach(selector=>$(selector).addEventListener("change",async event=>{
+  const container=$(selector), checked=[...container.querySelectorAll("input:checked")].map(input=>input.value);
+  if(!checked.length){event.target.checked=true;return;}
+  localStorage.setItem(selector==="#settingsGames"?ALERT_GAMES_KEY:ALERT_STORES_KEY,JSON.stringify(checked));
+  try{const registration=await navigator.serviceWorker.ready;const subscription=await registration.pushManager.getSubscription();if(subscription) await savePushSubscription(subscription);}catch(_){}
+}));
 $("#alertSettingsForm").addEventListener("submit",async event=>{ event.preventDefault(); await savePersonalMarkup($("#personalMarkup").value); $("#alertSettingsMessage").textContent="Saved for this phone."; setTimeout(()=>$("#alertSettingsDialog").close(),500); });
 
 function switchPage(page){
@@ -328,6 +343,7 @@ $("#navMoreBtn").addEventListener("click",()=>switchPage("more"));
 
 function openSettings(){
   $("#settingsMarkup").value=String(personalMarkup());
+  hydrateAlertChoices();
   updateSettingsAccount();
   $("#settingsScrim").hidden=false;
   $("#settingsDrawer").setAttribute("aria-hidden","false");
