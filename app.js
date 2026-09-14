@@ -20,6 +20,11 @@ function money(n){
   if(n==null) return "—";
   return new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(Number(n)||0);
 }
+function retailerHref(item){
+  const packages={"Amazon":"com.amazon.mShop.android.shopping","Walmart":"com.walmart.android","Target":"com.target.ui","Best Buy":"com.bestbuy.android"};
+  if(!/Android/i.test(navigator.userAgent)||!packages[item.store]||!item.url) return item.url||"#";
+  try{ const parsed=new URL(item.url); return `intent://${parsed.host}${parsed.pathname}${parsed.search}#Intent;scheme=https;package=${packages[item.store]};S.browser_fallback_url=${encodeURIComponent(item.url)};end`; }catch(_){ return item.url||"#"; }
+}
 function render(){
   const game=$("#gameFilter").value, area=$("#areaFilter").value;
   const retailer=$("#retailerFilter").value, status=$("#statusFilter").value;
@@ -58,7 +63,7 @@ function render(){
     if(m!=null) el.classList.add(m<=0?"good":m<=40?"warn":"bad");
     node.querySelector(".evidence").textContent=item.evidence||"";
     node.querySelector(".checked").textContent=item.checked_at?`Last checked ${new Date(item.checked_at).toLocaleString()}`:"";
-    node.querySelector(".buy").href=item.url||"#";
+    const buy=node.querySelector(".buy"); buy.href=retailerHref(item); buy.textContent=/Android/i.test(navigator.userAgent)&&["Amazon","Walmart","Target","Best Buy"].includes(item.store)?`Open in ${item.store} app`:`Open ${item.store} listing`;
     $("#results").appendChild(node);
   }
   $("#resultCount").textContent=filtered.length;
