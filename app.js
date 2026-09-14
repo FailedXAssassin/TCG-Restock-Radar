@@ -56,7 +56,7 @@ function render(){
            (area==="all"||x.area===area) &&
            (retailer==="all"||x.store===retailer) &&
            (status==="all"||x.status===status) &&
-           (m==null||m<=maxMarkup) &&
+           (m==null||x.status==="marketplace_in_stock"||m<=maxMarkup) &&
            (minQuantity===0||Number(x.quantity||0)>=minQuantity) &&
            (!q||`${x.product} ${x.store} ${x.game} ${x.area}`.toLowerCase().includes(q));
   });
