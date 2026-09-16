@@ -1124,25 +1124,7 @@ async def check_product(source):
 
         parser_result = None
 
-        if store.lower() == "walmart":
-            item_match = re.search(r"/ip/(?:[^/?]+/)?(\d+)", url)
-            parser_result = parse_walmart(
-                response.text,
-                item_match.group(1) if item_match else None,
-            )
-            status = parser_result["status"]
-            price = parser_result["price"]
-
-        elif store.lower() == "target":
-            tcin_match = re.search(r"/A-(\d+)", url)
-            parser_result = parse_target(
-                response.text,
-                tcin_match.group(1) if tcin_match else None,
-            )
-            status = parser_result["status"]
-            price = parser_result["price"]
-
-        elif adapter_for(store) and adapter_for(store).supports_inventory:
+        if adapter_for(store) and adapter_for(store).supports_inventory:
             # A supported adapter may promote public structured data to an
             # inventory state. It must return unknown when seller evidence is
             # missing; generic page scraping must not override it.
