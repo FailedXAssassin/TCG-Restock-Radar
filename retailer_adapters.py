@@ -40,6 +40,22 @@ GAME_RULES = (
     ("Magic", r"magic:?(?: the)? gathering|\bmtg\b|wizards of the coast"),
 )
 
+# Deterministic known-set recognition. Unknown names remain reviewable rather
+# than being guessed; discovery never needs a pack-count to be eligible.
+SET_RULES = (
+    ("Ascended Heroes", r"ascended heroes"),
+    ("Prismatic Evolutions", r"prismatic evolutions|\bprismatic\b"),
+    ("Phantasmal Flames", r"phantasmal flames|\bphantasmal\b"),
+    ("Pitch Black", r"pitch black"),
+    ("Perfect Order", r"perfect order"),
+    ("30th Anniversary", r"30th (?:anniversary|celebration)"),
+    ("Surging Sparks", r"surging sparks"),
+    ("Black Bolt", r"black bolt"),
+    ("White Flare", r"white flare"),
+    ("Destined Rivals", r"destined rivals"),
+    ("Chaos Rising", r"chaos rising"),
+)
+
 
 @dataclass(frozen=True)
 class NormalizedProduct:
@@ -82,6 +98,11 @@ def classify_title(title: str) -> tuple[str, str]:
     game = next((name for name, pattern in GAME_RULES if re.search(pattern, value, re.I)), "Other")
     product_type = next((name for name, pattern in PRODUCT_TYPE_RULES if re.search(pattern, value, re.I)), "other_pack_product")
     return game, product_type
+
+
+def classify_set(title: str) -> str:
+    value = unescape(title or "").lower()
+    return next((name for name, pattern in SET_RULES if re.search(pattern, value, re.I)), "")
 
 
 def bestbuy_product_id(url: str) -> str | None:
