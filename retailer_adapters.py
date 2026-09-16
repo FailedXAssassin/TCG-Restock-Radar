@@ -171,6 +171,12 @@ class RetailerAdapter:
     def check_inventory(self, public_html: str, product_url: str) -> InventoryObservation:
         return InventoryObservation(evidence="No parser is available for this retailer")
 
+    def get_local_inventory(self, public_html: str, product_url: str, location=None):
+        # Local availability frequently depends on selected-store state. A
+        # retailer must opt in with a verified public source before returning
+        # automated local results; community reports remain separate.
+        return {"status": "unsupported", "stores": [], "source": "automated"}
+
 
 class WalmartAdapter(RetailerAdapter):
     retailer = "Walmart"
