@@ -209,6 +209,7 @@ class BestBuyAdapter(RetailerAdapter):
     # Search/category pages are public discovery surfaces. This adapter does
     # not call undocumented endpoints and is disabled until explicitly enabled.
     supports_discovery = True
+    supports_inventory = True
 
     def discover_products(self, public_html: str, source_url: str) -> list[NormalizedProduct]:
         seen, found = set(), []
