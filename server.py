@@ -1674,6 +1674,32 @@ async def admin_status(authorization: str = Header(default="")):
     require_admin(authorization)
     return {"configured": True, "storage": str(SOURCES_FILE.name), "persistent_volume_required": "RAILWAY_VOLUME_MOUNT_PATH" not in os.environ}
 
+@app.get("/api/admin/discovery")
+async def admin_discovery(authorization: str = Header(default="")):
+    require_product_manager(authorization)
+    response = {
+        "enabled": BEST_BUY_DISCOVERY_ENABLED,
+        "interval_seconds": DISCOVERY_INTERVAL_SECONDS,
+        "retailer": "Best Buy",
+        "catalog_products": 0,
+        "pending_verification": 0,
+        "runs": [],
+    }
+    if not database_enabled():
+        response["storage"] = "unavailable"
+        return response
+    with _database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM radar_catalog_products")
+            response["catalog_products"] = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM radar_catalog_products WHERE payload->>'discovery_status' = 'pending_verification'")
+            response["pending_verification"] = cursor.fetchone()[0]
+            cursor.execute("SELECT payload FROM radar_discovery_runs WHERE retailer = %s ORDER BY created_at DESC LIMIT 20", ("Best Buy",))
+            response["runs"] = [row[0] for row in cursor.fetchall()]
+    response["storage"] = "postgres"
+    return response
+
+
 @app.get("/api/admin/usage")
 async def admin_usage(authorization: str = Header(default="")):
     require_admin(authorization)
