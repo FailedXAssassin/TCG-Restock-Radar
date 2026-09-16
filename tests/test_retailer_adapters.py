@@ -44,6 +44,19 @@ class AdapterFoundationTests(unittest.TestCase):
         self.assertEqual(result.status, "in_stock")
         self.assertTrue(result.first_party_seller)
 
+    def test_sku_specific_sold_out_state_beats_stale_structured_availability(self):
+        html = '''
+        <script type="application/ld+json">
+        {"@type":"Product","sku":"6678102","offers":{"price":"41.99","availability":"https://schema.org/InStock","seller":{"name":"Best Buy"}}}
+        </script>
+        <button data-testid="pdp-sold-out-6678102">Sold Out</button>
+        <script>window.data={"skuId":"6678102","displayableCustomerPrice":41.99}</script>
+        '''
+        result = BestBuyAdapter().check_inventory(html, "https://www.bestbuy.com/product/example/X/sku/6678102")
+        self.assertEqual(result.status, "sold_out")
+        self.assertEqual(result.price, 41.99)
+
+
     def test_marketplace_or_ambiguous_offer_stays_unknown(self):
         html = '''
         <script type="application/ld+json">
