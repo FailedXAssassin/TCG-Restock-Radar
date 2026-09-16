@@ -142,7 +142,16 @@ def _offer_list(node: dict) -> list[dict]:
 class RetailerAdapter:
     retailer = "Unknown"
     supports_discovery = False
+    supports_inventory = False
     supports_local_inventory = False
+
+    def capabilities(self):
+        return {
+            "retailer": self.retailer,
+            "discovery": self.supports_discovery,
+            "inventory": self.supports_inventory,
+            "local_inventory": self.supports_local_inventory,
+        }
 
     def discover_products(self, public_html: str, source_url: str) -> list[NormalizedProduct]:
         return []
@@ -227,8 +236,36 @@ class BestBuyAdapter(RetailerAdapter):
         return InventoryObservation("unknown", evidence="Best Buy public product data did not provide an offer tied to a verified first-party seller", retailer_product_id=expected_id)
 
 
-ADAPTERS = {"Best Buy": BestBuyAdapter()}
+class UnsupportedRetailerAdapter(RetailerAdapter):
+    """Explicit placeholder: no discovery/monitoring until public data is verified."""
+
+    def __init__(self, retailer):
+        self.retailer = retailer
+
+    def check_inventory(self, public_html: str, product_url: str) -> InventoryObservation:
+        return InventoryObservation(
+            evidence=f"{self.retailer} adapter is not verified for automated inventory yet"
+        )
+
+
+ADAPTERS = {
+    "Best Buy": BestBuyAdapter(),
+    "Walmart": UnsupportedRetailerAdapter("Walmart"),
+    "Target": UnsupportedRetailerAdapter("Target"),
+    "GameStop": UnsupportedRetailerAdapter("GameStop"),
+    "Pokemon Center": UnsupportedRetailerAdapter("Pokemon Center"),
+    "Amazon": UnsupportedRetailerAdapter("Amazon"),
+    "CVS": UnsupportedRetailerAdapter("CVS"),
+    "Walgreens": UnsupportedRetailerAdapter("Walgreens"),
+    "Costco": UnsupportedRetailerAdapter("Costco"),
+    "Sam's Club": UnsupportedRetailerAdapter("Sam's Club"),
+    "Dick's Sporting Goods": UnsupportedRetailerAdapter("Dick's Sporting Goods"),
+}
 
 
 def adapter_for(retailer: str) -> RetailerAdapter | None:
     return ADAPTERS.get(retailer)
+
+
+def adapter_capabilities():
+    return [adapter.capabilities() for adapter in ADAPTERS.values()]
