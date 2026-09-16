@@ -211,7 +211,7 @@ class BestBuyAdapter(RetailerAdapter):
         # Best Buy's current public PDP can expose a SKU-specific sold-out
         # control and price in streamed page data without JSON-LD. This may
         # safely establish an unavailable state, but never an in-stock seller.
-        if expected_id and re.search(rf'data-testid=["\\']pdp-sold-out-{re.escape(expected_id)}(?:-label)?["\\']', page, re.I):
+        if expected_id and re.search(rf"data-testid=[\"']pdp-sold-out-{re.escape(expected_id)}(?:-label)?[\"']", page, re.I):
             price_match = re.search(
                 rf'"displayableCustomerPrice"\\s*:\\s*(\\d+(?:\\.\\d{{1,2}})?).*?"skuId"\\s*:\\s*"{re.escape(expected_id)}"|'
                 rf'"skuId"\\s*:\\s*"{re.escape(expected_id)}".*?"displayableCustomerPrice"\\s*:\\s*(\\d+(?:\\.\\d{{1,2}})?)',
