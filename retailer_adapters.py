@@ -20,24 +20,24 @@ INVENTORY_STATES = {"in_stock", "sold_out", "loaded", "unknown", "error", "not_f
 PRODUCT_TYPE_RULES = (
     ("ultra_premium_collection", r"ultra[- ]premium|upc"),
     ("premium_collection", r"premium collection"),
-    ("elite_trainer_box", r"elite trainer box|\\betb\\b"),
+    ("elite_trainer_box", r"elite trainer box|\betb\b"),
     ("booster_bundle", r"booster bundle"),
     ("booster_box", r"booster (?:box|display)|display box"),
     ("three_pack_blister", r"3[- ]pack|three[- ]pack|blister"),
     ("sleeved_booster", r"sleeved booster"),
-    ("booster_pack", r"booster pack|\\bbooster\\b"),
+    ("booster_pack", r"booster pack|\bbooster\b"),
     ("mini_tin", r"mini tin"),
-    ("tin", r"\\btin\\b"),
+    ("tin", r"\btin\b"),
     ("ultra_premium_collection", r"super[- ]premium"),
     ("collection", r"collection|collector chest"),
     ("deck", r"deck|battle deck|starter kit|draft night"),
-    ("bundle", r"\\bbundle\\b"),
+    ("bundle", r"\bbundle\b"),
 )
 
 GAME_RULES = (
     ("Pokemon", r"pok[eé]mon|pokemon tcg|pokemon trading card"),
-    ("One Piece", r"one piece (?:card game|tcg|trading card)|\\bop-\\d+"),
-    ("Magic", r"magic:?(?: the)? gathering|\\bmtg\\b|wizards of the coast"),
+    ("One Piece", r"one piece (?:card game|tcg|trading card)|\bop-\d+"),
+    ("Magic", r"magic:?(?: the)? gathering|\bmtg\b|wizards of the coast"),
 )
 
 
@@ -88,7 +88,7 @@ def bestbuy_product_id(url: str) -> str | None:
     parsed = urlparse(url)
     if parsed.scheme != "https" or not parsed.netloc.lower().endswith("bestbuy.com"):
         return None
-    match = re.search(r"/sku/(\\d+)(?:[/?]|$)", parsed.path, re.I)
+    match = re.search(r"/sku/(\d+)(?:[/?]|$)", parsed.path, re.I)
     if match:
         return match.group(1)
     # Best Buy's newer public product URLs can use a stable opaque product key.
@@ -97,7 +97,7 @@ def bestbuy_product_id(url: str) -> str | None:
 
 
 def _json_ld_nodes(html_text: str) -> Iterable[dict]:
-    for raw in re.findall(r'<script[^>]+type=["\\']application/ld\\+json["\\'][^>]*>(.*?)</script>', html_text, re.I | re.S):
+    for raw in re.findall(r"<script[^>]+type=[\"']application/ld\+json[\"'][^>]*>(.*?)</script>", html_text, re.I | re.S):
         try:
             value = json.loads(unescape(raw).strip())
         except (TypeError, json.JSONDecodeError):
@@ -138,13 +138,13 @@ class BestBuyAdapter(RetailerAdapter):
 
     def discover_products(self, public_html: str, source_url: str) -> list[NormalizedProduct]:
         seen, found = set(), []
-        for href, label in re.findall(r'<a[^>]+href=["\\']([^"\\']+)["\\'][^>]*>(.*?)</a>', public_html, re.I | re.S):
+        for href, label in re.findall(r"<a[^>]+href=[\"']([^\"']+)[\"'][^>]*>(.*?)</a>", public_html, re.I | re.S):
             url = urljoin(source_url, unescape(href))
             product_id = bestbuy_product_id(url)
             if not product_id or product_id in seen:
                 continue
             title = re.sub(r"<[^>]+>", " ", unescape(label))
-            title = re.sub(r"\\s+", " ", title).strip()
+            title = re.sub(r"\s+", " ", title).strip()
             game, product_type = classify_title(title)
             if game == "Other" or product_type == "other_pack_product":
                 continue
@@ -163,7 +163,7 @@ class BestBuyAdapter(RetailerAdapter):
     def check_inventory(self, public_html: str, product_url: str) -> InventoryObservation:
         expected_id = bestbuy_product_id(product_url)
         page = unescape(public_html)
-        explicit_first_party = bool(re.search(r"(?:sold by|ships from)\\s+best buy\\b", page, re.I))
+        explicit_first_party = bool(re.search(r"(?:sold by|ships from)\s+best buy\b", page, re.I))
         for node in _json_ld_nodes(page):
             if str(node.get("@type", "")).lower() != "product":
                 continue
