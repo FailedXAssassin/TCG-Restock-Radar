@@ -315,6 +315,39 @@ def upsert_catalog_product(product):
     return True
 
 
+def persist_inventory_observation(item, previous):
+    """Store only a change or price/seller update, never every polling result."""
+    if not database_enabled():
+        return
+    meaningful = (
+        previous.get("status") != item.get("status")
+        or previous.get("price") != item.get("price")
+        or previous.get("seller") != item.get("seller")
+        or previous.get("official_seller_verified") != item.get("official_seller_verified")
+    )
+    if not meaningful:
+        return
+    observation_id = hashlib.sha256(
+        f"{item.get('id')}:{item.get('checked_at')}:{item.get('status')}:{item.get('price')}:{item.get('seller')}".encode("utf-8")
+    ).hexdigest()[:24]
+    payload = {
+        "status": item.get("status"),
+        "previous_status": previous.get("status"),
+        "price": item.get("price"),
+        "seller": item.get("seller"),
+        "first_party_seller": item.get("official_seller_verified"),
+        "checked_at": item.get("checked_at"),
+        "evidence": item.get("evidence"),
+    }
+    with _database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO radar_inventory_observations (id, product_id, payload) VALUES (%s, %s, %s::jsonb) ON CONFLICT (id) DO NOTHING",
+                (observation_id, item.get("id"), json.dumps(payload)),
+            )
+        connection.commit()
+
+
 def _write_discovery_run(run):
     if not database_enabled():
         return
@@ -640,7 +673,7 @@ def _write_alert_event(event):
     if database_enabled():
         with _database_connection() as connection:
             with connection.cursor() as cursor:
-                cursor.execute("INSERT INTO radar_alert_events (id, product_id, payload) VALUES (%s, %s, %s::jsonb)", (event["id"], event["product_id"], json.dumps(event)))
+                cursor.execute("INSERT INTO radar_alert_events (id, product_id, payload) VALUES (%s, %s, %s::jsonb) ON CONFLICT (id) DO NOTHING", (event["id"], event["product_id"], json.dumps(event)))
             connection.commit()
         return
     history = [event] + [item for item in _alert_history() if item.get("id") != event.get("id")]
@@ -743,8 +776,11 @@ async def notify_transition(item):
     previous, current = item.get("previous_status"), item.get("status")
     if current != "in_stock" or not item.get("official_seller_verified"):
         return
+    # One deterministic event per product/restock session. This is safe across
+    # process restarts and protects against duplicate notification tasks.
+    event_id_source = f"{item.get('id')}:{int(item.get('restock_session') or 0)}:restock"
     event = {
-        "id": secrets.token_urlsafe(12),
+        "id": hashlib.sha256(event_id_source.encode("utf-8")).hexdigest()[:24],
         "product_id": item.get("id"),
         "product": item.get("product"),
         "store": item.get("store"),
@@ -1178,13 +1214,19 @@ async def check_product(source):
             and old_status != status
         )
 
-        restock_armed = bool(previous.get("restock_armed"))
-        if previous and status in RESTOCK_ARMING_STATUSES:
-            restock_armed = True
+        # A new sellout/loaded session re-arms exactly one future alert.
+        # Persisting the session prevents a Railway restart from replaying it.
+        new_restock_session = bool(
+            previous and previous.get("status") == "in_stock"
+            and status in RESTOCK_ARMING_STATUSES
+        )
+        restock_session = int(previous.get("restock_session") or 0) + (1 if new_restock_session else 0)
+        live_alerted = False if new_restock_session else bool(previous.get("live_alerted"))
+        restock_armed = bool(previous.get("restock_armed")) or bool(previous and status in RESTOCK_ARMING_STATUSES)
         in_stock_streak = int(previous.get("in_stock_streak") or 0) + 1 if status == "in_stock" and retailer_direct else 0
         restock_confirmed = bool(
             restock_armed and status == "in_stock" and retailer_direct
-            and in_stock_streak >= 2 and not previous.get("live_alerted")
+            and in_stock_streak >= 2 and not live_alerted
         )
 
         checked_at = now_iso()
@@ -1218,8 +1260,9 @@ async def check_product(source):
             "previous_status": old_status,
             "status_changed": changed,
             "restock_armed": restock_armed,
+            "restock_session": restock_session,
             "in_stock_streak": in_stock_streak,
-            "live_alerted": bool(previous.get("live_alerted")) or restock_confirmed,
+            "live_alerted": live_alerted or restock_confirmed,
             "restock_confirmed": restock_confirmed,
             "official_seller_verified": retailer_direct,
             "price": price,
@@ -1250,6 +1293,7 @@ async def check_product(source):
         # Keep only monitor state needed to survive a Railway restart. Product
         # cards remain in memory; PostgreSQL is the durable dedupe authority.
         persist_monitor_state(product_key, products[product_key])
+        persist_inventory_observation(products[product_key], previous)
         asyncio.create_task(notify_transition(products[product_key]))
 
     except Exception as exc:
