@@ -33,6 +33,13 @@ VAPID_CONTACT = os.environ.get("TCG_RADAR_VAPID_CONTACT", "mailto:owner@example.
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", os.environ.get("TCG_RADAR_GOOGLE_CLIENT_ID", ""))
 OWNER_EMAIL = os.environ.get("TCG_RADAR_OWNER_EMAIL", "").strip().lower()
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
+BEST_BUY_DISCOVERY_ENABLED = os.environ.get("TCG_RADAR_BEST_BUY_DISCOVERY_ENABLED", "").strip().lower() in {"1", "true", "yes"}
+DISCOVERY_INTERVAL_SECONDS = max(3600, int(os.environ.get("TCG_RADAR_DISCOVERY_INTERVAL_SECONDS", "21600")))
+BEST_BUY_DISCOVERY_URLS = (
+    "https://www.bestbuy.com/site/searchpage.jsp?id=pcat17071&st=pokemon+tcg",
+    "https://www.bestbuy.com/site/searchpage.jsp?id=pcat17071&st=magic+the+gathering",
+    "https://www.bestbuy.com/site/searchpage.jsp?id=pcat17071&st=one+piece+card+game",
+)
 
 USER_AGENT = (
     "Mozilla/5.0 (Linux; Android 16) "
@@ -58,6 +65,7 @@ DIRECT_SELLER_NAMES = {
 
 scheduler_task = None
 http_client = None
+last_discovery_attempt = {}
 
 
 def now_iso():
@@ -236,6 +244,20 @@ def ensure_database():
                     "INSERT INTO radar_products (id, payload) VALUES (%s, %s::jsonb) ON CONFLICT (id) DO NOTHING",
                     (source_id(source), json.dumps(source)),
                 )
+                catalog_payload = dict(source)
+                catalog_payload.update({
+                    "canonical_key": canonical_product_key(source),
+                    "retailer": retailer_name(str(source.get("url", "")), str(source.get("store", ""))),
+                    "retailer_product_id": bestbuy_product_id(str(source.get("url", ""))) or source_id(source),
+                    "discovery_source": "manual",
+                    "discovery_status": "active",
+                })
+                cursor.execute(
+                    "INSERT INTO radar_catalog_products (canonical_key, retailer, retailer_product_id, payload) "
+                    "VALUES (%s, %s, %s, %s::jsonb) "
+                    "ON CONFLICT (canonical_key) DO UPDATE SET last_seen_at = NOW(), payload = EXCLUDED.payload",
+                    (catalog_payload["canonical_key"], catalog_payload["retailer"], catalog_payload["retailer_product_id"], json.dumps(catalog_payload)),
+                )
         connection.commit()
 
 
@@ -273,6 +295,94 @@ def load_monitor_state(product_id):
             cursor.execute("SELECT payload FROM radar_monitor_state WHERE product_id = %s", (product_id,))
             row = cursor.fetchone()
             return row[0] if row else {}
+
+
+def upsert_catalog_product(product):
+    """Store a normalized product candidate without changing the manual monitor list."""
+    if not database_enabled():
+        return False
+    payload = product.to_dict() if hasattr(product, "to_dict") else dict(product)
+    key = str(payload["canonical_key"])
+    with _database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO radar_catalog_products (canonical_key, retailer, retailer_product_id, payload) "
+                "VALUES (%s, %s, %s, %s::jsonb) "
+                "ON CONFLICT (canonical_key) DO UPDATE SET last_seen_at = NOW(), payload = EXCLUDED.payload",
+                (key, payload["retailer"], payload["retailer_product_id"], json.dumps(payload)),
+            )
+        connection.commit()
+    return True
+
+
+def _write_discovery_run(run):
+    if not database_enabled():
+        return
+    with _database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO radar_discovery_runs (id, retailer, payload) VALUES (%s, %s, %s::jsonb)",
+                (run["id"], run["retailer"], json.dumps(run)),
+            )
+        connection.commit()
+
+
+async def discover_best_buy_products():
+    """Discover only public category/search links; candidates stay reviewable."""
+    run = {
+        "id": secrets.token_urlsafe(12),
+        "retailer": "Best Buy",
+        "started_at": now_iso(),
+        "discovered": 0,
+        "stored": 0,
+        "status": "skipped",
+        "errors": [],
+    }
+    if not BEST_BUY_DISCOVERY_ENABLED:
+        run["reason"] = "TCG_RADAR_BEST_BUY_DISCOVERY_ENABLED is not enabled"
+        return run
+    if not database_enabled():
+        run["reason"] = "PostgreSQL is required for restart-safe discovery"
+        return run
+    adapter = adapter_for("Best Buy")
+    if not adapter or not adapter.supports_discovery:
+        run["reason"] = "Best Buy discovery adapter is unavailable"
+        return run
+    run["status"] = "success"
+    for source_url in BEST_BUY_DISCOVERY_URLS:
+        try:
+            response = await http_client.get(source_url, headers={"User-Agent": USER_AGENT, "Accept": "text/html"}, timeout=20)
+            if response.status_code != 200:
+                raise RuntimeError(f"HTTP {response.status_code}")
+            candidates = adapter.discover_products(response.text, source_url)
+            run["discovered"] += len(candidates)
+            for candidate in candidates:
+                # These catalog entries are deliberately not added to
+                # radar_products yet. A product page must separately establish
+                # direct seller/availability evidence before monitoring starts.
+                payload = candidate.to_dict() | {"discovery_status": "pending_verification"}
+                if upsert_catalog_product(payload):
+                    run["stored"] += 1
+            mark_success("Best Buy", response.status_code)
+        except Exception as exc:
+            run["status"] = "partial" if run["stored"] else "error"
+            run["errors"].append(f"{source_url}: {type(exc).__name__}: {exc}")
+            mark_failure("Best Buy", str(exc))
+        await asyncio.sleep(2)
+    run["completed_at"] = now_iso()
+    _write_discovery_run(run)
+    return run
+
+
+async def maybe_run_discovery():
+    if not BEST_BUY_DISCOVERY_ENABLED:
+        return
+    now = time.monotonic()
+    last = last_discovery_attempt.get("Best Buy", 0)
+    if now - last < DISCOVERY_INTERVAL_SECONDS:
+        return
+    last_discovery_attempt["Best Buy"] = now
+    await discover_best_buy_products()
 
 
 def _file_sources():
@@ -1207,6 +1317,7 @@ async def scheduler():
     last_priority_pulse = None
 
     while True:
+        await maybe_run_discovery()
         sources = load_sources()
 
         if not sources:
