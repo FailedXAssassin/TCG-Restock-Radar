@@ -16,7 +16,7 @@ import httpx
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from parsers import PARSER_VERSION, parse_target, parse_walmart
-from retailer_adapters import adapter_for, bestbuy_product_id
+from retailer_adapters import adapter_capabilities, adapter_for, bestbuy_product_id
 
 
 ROOT = Path(__file__).resolve().parent
@@ -1142,7 +1142,7 @@ async def check_product(source):
             status = parser_result["status"]
             price = parser_result["price"]
 
-        elif adapter_for(store):
+        elif adapter_for(store) and adapter_for(store).supports_inventory:
             # A supported adapter may promote public structured data to an
             # inventory state. It must return unknown when seller evidence is
             # missing; generic page scraping must not override it.
@@ -1515,6 +1515,7 @@ async def health():
             retailer_health
         ),
         "persistent_storage": "postgres" if database_enabled() else ("volume" if "RAILWAY_VOLUME_MOUNT_PATH" in os.environ else "ephemeral"),
+        "adapter_capabilities": adapter_capabilities(),
     }
 
 
