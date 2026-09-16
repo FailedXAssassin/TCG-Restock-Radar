@@ -16,6 +16,7 @@ import httpx
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from parsers import PARSER_VERSION, parse_target, parse_walmart
+from retailer_adapters import adapter_for, bestbuy_product_id
 
 
 ROOT = Path(__file__).resolve().parent
@@ -222,6 +223,12 @@ def ensure_database():
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_users (google_sub TEXT PRIMARY KEY, email TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_purchases (id TEXT PRIMARY KEY, google_sub TEXT NOT NULL, payload JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_visitors (client_id TEXT PRIMARY KEY, first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(), last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cursor.execute("CREATE TABLE IF NOT EXISTS radar_catalog_products (canonical_key TEXT PRIMARY KEY, retailer TEXT NOT NULL, retailer_product_id TEXT NOT NULL, payload JSONB NOT NULL, first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cursor.execute("CREATE TABLE IF NOT EXISTS radar_monitor_state (product_id TEXT PRIMARY KEY, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cursor.execute("CREATE TABLE IF NOT EXISTS radar_inventory_observations (id TEXT PRIMARY KEY, product_id TEXT NOT NULL, payload JSONB NOT NULL, observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cursor.execute("CREATE INDEX IF NOT EXISTS radar_inventory_observations_product_time ON radar_inventory_observations (product_id, observed_at DESC)")
+            cursor.execute("CREATE TABLE IF NOT EXISTS radar_discovery_runs (id TEXT PRIMARY KEY, retailer TEXT NOT NULL, payload JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cursor.execute("CREATE TABLE IF NOT EXISTS radar_adapter_health (retailer TEXT PRIMARY KEY, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             # Add new checked-in starter products without overwriting products
             # added by the owner or moderators.
             for source in _file_sources():
@@ -230,6 +237,42 @@ def ensure_database():
                     (source_id(source), json.dumps(source)),
                 )
         connection.commit()
+
+
+
+def canonical_product_key(source):
+    """Stable dedupe key that leaves legacy source IDs untouched."""
+    url = str(source.get("url", ""))
+    store = retailer_name(url, str(source.get("store", "")))
+    if store == "Best Buy":
+        retailer_product_id = bestbuy_product_id(url)
+        if retailer_product_id:
+            return f"best buy:{retailer_product_id}"
+    return f"url:{hashlib.sha256(url.split('?')[0].encode('utf-8')).hexdigest()[:24]}"
+
+
+def persist_monitor_state(product_id, state):
+    """Persist alert arming/dedupe state when PostgreSQL is configured."""
+    if not database_enabled():
+        return
+    with _database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO radar_monitor_state (product_id, payload) VALUES (%s, %s::jsonb) "
+                "ON CONFLICT (product_id) DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()",
+                (product_id, json.dumps(state)),
+            )
+        connection.commit()
+
+
+def load_monitor_state(product_id):
+    if not database_enabled():
+        return {}
+    with _database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT payload FROM radar_monitor_state WHERE product_id = %s", (product_id,))
+            row = cursor.fetchone()
+            return row[0] if row else {}
 
 
 def _file_sources():
