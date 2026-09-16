@@ -185,6 +185,20 @@ class BestBuyAdapter(RetailerAdapter):
         expected_id = bestbuy_product_id(product_url)
         page = unescape(public_html)
         explicit_first_party = bool(re.search(r"(?:sold by|ships from)\s+best buy\b", page, re.I))
+        # A visible SKU-specific PDP state is more current than stale JSON-LD
+        # availability, which can lag after a product sells out.
+        if expected_id and re.search(rf"data-testid=[\"']pdp-sold-out-{re.escape(expected_id)}(?:-label)?[\"']", page, re.I):
+            price_match = re.search(
+                rf'"displayableCustomerPrice"\s*:\s*(\d+(?:\.\d{{1,2}})?).*?"skuId"\s*:\s*"{re.escape(expected_id)}"|'
+                rf'"skuId"\s*:\s*"{re.escape(expected_id)}".*?"displayableCustomerPrice"\s*:\s*(\d+(?:\.\d{{1,2}})?)',
+                page, re.I | re.S,
+            )
+            value = next((item for item in (price_match.groups() if price_match else ()) if item), None)
+            return InventoryObservation(
+                "sold_out", float(value) if value else None, "Best Buy", True,
+                evidence="Best Buy public product page displays the SKU-specific Sold Out control",
+                retailer_product_id=expected_id,
+            )
         for node in _json_ld_nodes(page):
             if str(node.get("@type", "")).lower() != "product":
                 continue
@@ -210,21 +224,6 @@ class BestBuyAdapter(RetailerAdapter):
                     return InventoryObservation("unknown", None, seller, False, evidence="An in-stock offer was present but Best Buy seller identity was not explicit", retailer_product_id=expected_id)
                 if "outofstock" in availability:
                     return InventoryObservation("sold_out", price, seller or ("Best Buy" if first_party else None), first_party, evidence="Best Buy public Product JSON-LD reports the offer unavailable", retailer_product_id=expected_id)
-        # Best Buy's current public PDP can expose a SKU-specific sold-out
-        # control and price in streamed page data without JSON-LD. This may
-        # safely establish an unavailable state, but never an in-stock seller.
-        if expected_id and re.search(rf"data-testid=[\"']pdp-sold-out-{re.escape(expected_id)}(?:-label)?[\"']", page, re.I):
-            price_match = re.search(
-                rf'"displayableCustomerPrice"\\s*:\\s*(\\d+(?:\\.\\d{{1,2}})?).*?"skuId"\\s*:\\s*"{re.escape(expected_id)}"|'
-                rf'"skuId"\\s*:\\s*"{re.escape(expected_id)}".*?"displayableCustomerPrice"\\s*:\\s*(\\d+(?:\\.\\d{{1,2}})?)',
-                page, re.I | re.S,
-            )
-            value = next((item for item in (price_match.groups() if price_match else ()) if item), None)
-            return InventoryObservation(
-                "sold_out", float(value) if value else None, "Best Buy", True,
-                evidence="Best Buy public product page displays the SKU-specific Sold Out control",
-                retailer_product_id=expected_id,
-            )
         return InventoryObservation("unknown", evidence="Best Buy public product data did not provide an offer tied to a verified first-party seller", retailer_product_id=expected_id)
 
 
