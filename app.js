@@ -213,8 +213,8 @@ async function loadAlerts(){
 
 const HELP_THREAD_KEY="tcg-radar-help-thread";
 const HELP_CLIENT_KEY="tcg-radar-help-client";
-const helpThread=localStorage.getItem(HELP_THREAD_KEY)||crypto.randomUUID();
-const helpClient=localStorage.getItem(HELP_CLIENT_KEY)||crypto.randomUUID();
+const helpThread=localStorage.getItem(HELP_THREAD_KEY)||createVisitorId();
+const helpClient=localStorage.getItem(HELP_CLIENT_KEY)||createVisitorId();
 localStorage.setItem(HELP_THREAD_KEY,helpThread); localStorage.setItem(HELP_CLIENT_KEY,helpClient);
 async function loadHelpThread(){
   const list=$("#helpMessages");
