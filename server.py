@@ -677,6 +677,8 @@ def official_seller_verified(source, store, parser_result, text):
 
     store_key = store.strip().lower()
     seller = str((parser_result or {}).get("seller") or "").strip().lower()
+    if (parser_result or {}).get("first_party_seller") is True:
+        return True
     if store_key in DIRECT_SELLER_NAMES:
         return seller in DIRECT_SELLER_NAMES[store_key]
 
@@ -951,10 +953,7 @@ async def check_product(source):
 
     product_key = source_id(source)
 
-    previous = products.get(
-        product_key,
-        {},
-    )
+    previous = products.get(product_key) or load_monitor_state(product_key)
 
     started = time.monotonic()
 
@@ -994,6 +993,14 @@ async def check_product(source):
                 response.text,
                 tcin_match.group(1) if tcin_match else None,
             )
+            status = parser_result["status"]
+            price = parser_result["price"]
+
+        elif adapter_for(store):
+            # A supported adapter may promote public structured data to an
+            # inventory state. It must return unknown when seller evidence is
+            # missing; generic page scraping must not override it.
+            parser_result = adapter_for(store).check_inventory(response.text, url).to_dict()
             status = parser_result["status"]
             price = parser_result["price"]
 
@@ -1130,6 +1137,9 @@ async def check_product(source):
                 f"checked {datetime.now(timezone.utc).strftime('%H:%M:%S UTC')}"
             ),
         }
+        # Keep only monitor state needed to survive a Railway restart. Product
+        # cards remain in memory; PostgreSQL is the durable dedupe authority.
+        persist_monitor_state(product_key, products[product_key])
         asyncio.create_task(notify_transition(products[product_key]))
 
     except Exception as exc:
