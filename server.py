@@ -1104,19 +1104,21 @@ async def check_product(source):
     started = time.monotonic()
 
     try:
-        response = await http_client.get(
-            url,
-            headers={
-                "User-Agent": USER_AGENT,
-                "Accept": (
-                    "text/html,"
-                    "application/xhtml+xml,"
-                    "application/json"
-                ),
-                "Accept-Language": "en-US,en;q=0.9",
-            },
-            timeout=20,
-        )
+        request_headers = {
+            "User-Agent": USER_AGENT,
+            "Accept": "text/html,application/xhtml+xml,application/json",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+        try:
+            response = await http_client.get(url, headers=request_headers, timeout=20)
+        except (httpx.TimeoutException, httpx.TransportError):
+            # One delayed Best Buy retry handles transient Railway-to-retailer
+            # connection failures. Other retailers retain their existing
+            # one-request pacing, and normal health backoff still applies.
+            if store != "Best Buy":
+                raise
+            await asyncio.sleep(2)
+            response = await http_client.get(url, headers=request_headers, timeout=25)
 
         elapsed_ms = round(
             (time.monotonic() - started) * 1000
@@ -1332,7 +1334,7 @@ async def check_product(source):
             "notification_at": previous.get("notification_at"),
             "response_ms": None,
             "http_status": None,
-            "evidence": f"Check failed: {exc}",
+            "evidence": f"Check failed: {type(exc).__name__}: {exc}",
         }
 
 
