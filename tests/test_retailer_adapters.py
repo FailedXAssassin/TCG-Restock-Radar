@@ -1,6 +1,6 @@
 import unittest
 
-from retailer_adapters import BestBuyAdapter, bestbuy_product_id, classify_title
+from retailer_adapters import BestBuyAdapter, TargetAdapter, WalmartAdapter, bestbuy_product_id, classify_title
 
 
 class AdapterFoundationTests(unittest.TestCase):
@@ -13,6 +13,32 @@ class AdapterFoundationTests(unittest.TestCase):
             classify_title("Bandai One Piece Card Game OP-15 Sleeved Booster Pack"),
             ("One Piece", "sleeved_booster"),
         )
+
+    def test_walmart_adapter_keeps_marketplace_offer_quiet(self):
+        html = '''
+        <script id="__NEXT_DATA__" type="application/json">
+        {"props":{"pageProps":{"initialData":{"data":{"product":{
+        "usItemId":"123","sellerName":"Marketplace Seller","sellerType":"EXTERNAL",
+        "availabilityStatus":"IN_STOCK","priceInfo":{"currentPrice":{"price":99.99}}
+        }}}}}}
+        </script>
+        '''
+        result = WalmartAdapter().check_inventory(html, "https://www.walmart.com/ip/123")
+        self.assertEqual(result.status, "marketplace_in_stock")
+        self.assertFalse(result.first_party_seller)
+
+    def test_target_adapter_returns_direct_structured_inventory(self):
+        html = '''
+        <script id="__NEXT_DATA__" type="application/json">
+        {"props":{"dehydratedState":{"queries":[{"state":{"data":{
+        "product":{"tcin":"456","item":{}},"module":{"tcin":"456","three_up_sections":[{"availability_status":"IN_STOCK"}]}
+        }}}]}}}
+        </script>
+        '''
+        result = TargetAdapter().check_inventory(html, "https://www.target.com/p/-/A-456")
+        self.assertEqual(result.status, "in_stock")
+        self.assertTrue(result.first_party_seller)
+
 
     def test_extracts_legacy_and_current_best_buy_product_ids(self):
         self.assertEqual(
