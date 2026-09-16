@@ -14,6 +14,8 @@ import re
 from typing import Iterable
 from urllib.parse import urljoin, urlparse
 
+from parsers import parse_target, parse_walmart
+
 
 INVENTORY_STATES = {"in_stock", "sold_out", "loaded", "unknown", "error", "not_found", "blocked", "marketplace_in_stock"}
 
@@ -105,6 +107,16 @@ def classify_set(title: str) -> str:
     return next((name for name, pattern in SET_RULES if re.search(pattern, value, re.I)), "")
 
 
+def walmart_product_id(url: str) -> str | None:
+    match = re.search(r"/ip/(?:[^/?]+/)?(\d+)", urlparse(url).path, re.I)
+    return match.group(1) if match else None
+
+
+def target_tcin(url: str) -> str | None:
+    match = re.search(r"/A-(\d+)", urlparse(url).path, re.I)
+    return match.group(1) if match else None
+
+
 def bestbuy_product_id(url: str) -> str | None:
     parsed = urlparse(url)
     if parsed.scheme != "https" or not parsed.netloc.lower().endswith("bestbuy.com"):
@@ -158,6 +170,32 @@ class RetailerAdapter:
 
     def check_inventory(self, public_html: str, product_url: str) -> InventoryObservation:
         return InventoryObservation(evidence="No parser is available for this retailer")
+
+
+class WalmartAdapter(RetailerAdapter):
+    retailer = "Walmart"
+    supports_inventory = True
+
+    def check_inventory(self, public_html: str, product_url: str) -> InventoryObservation:
+        result = parse_walmart(public_html, walmart_product_id(product_url))
+        return InventoryObservation(
+            status=result["status"], price=result.get("price"), seller=result.get("seller"),
+            first_party_seller=result.get("seller") in {"Walmart", "Walmart.com"},
+            evidence=result.get("evidence", ""), retailer_product_id=walmart_product_id(product_url),
+        )
+
+
+class TargetAdapter(RetailerAdapter):
+    retailer = "Target"
+    supports_inventory = True
+
+    def check_inventory(self, public_html: str, product_url: str) -> InventoryObservation:
+        result = parse_target(public_html, target_tcin(product_url))
+        return InventoryObservation(
+            status=result["status"], price=result.get("price"), seller=result.get("seller"),
+            first_party_seller=result.get("seller") == "Target",
+            evidence=result.get("evidence", ""), retailer_product_id=target_tcin(product_url),
+        )
 
 
 class BestBuyAdapter(RetailerAdapter):
@@ -250,8 +288,8 @@ class UnsupportedRetailerAdapter(RetailerAdapter):
 
 ADAPTERS = {
     "Best Buy": BestBuyAdapter(),
-    "Walmart": UnsupportedRetailerAdapter("Walmart"),
-    "Target": UnsupportedRetailerAdapter("Target"),
+    "Walmart": WalmartAdapter(),
+    "Target": TargetAdapter(),
     "GameStop": UnsupportedRetailerAdapter("GameStop"),
     "Pokemon Center": UnsupportedRetailerAdapter("Pokemon Center"),
     "Amazon": UnsupportedRetailerAdapter("Amazon"),
