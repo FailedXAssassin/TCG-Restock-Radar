@@ -1725,6 +1725,76 @@ async def ban_help_client(client_id: str, authorization: str = Header(default=""
     return {"banned": True, "client_id": client_id}
 
 
+@app.get("/api/admin/catalog")
+async def admin_catalog(status: str = "", authorization: str = Header(default="")):
+    require_product_manager(authorization)
+    if not database_enabled():
+        return {"items": [], "storage": "unavailable"}
+    with _database_connection() as connection:
+        with connection.cursor() as cursor:
+            if status:
+                cursor.execute(
+                    "SELECT payload FROM radar_catalog_products WHERE payload->>'discovery_status' = %s ORDER BY last_seen_at DESC LIMIT 250",
+                    (status,),
+                )
+            else:
+                cursor.execute("SELECT payload FROM radar_catalog_products ORDER BY last_seen_at DESC LIMIT 250")
+            items = [row[0] for row in cursor.fetchall()]
+    return {"items": items, "storage": "postgres"}
+
+
+@app.post("/api/admin/catalog/{canonical_key}/approve")
+async def approve_catalog_product(canonical_key: str, authorization: str = Header(default="")):
+    require_admin(authorization)
+    if not database_enabled():
+        raise HTTPException(status_code=503, detail="PostgreSQL is required for discovery approval")
+    with _database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT payload FROM radar_catalog_products WHERE canonical_key = %s", (canonical_key,))
+            row = cursor.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Discovered product was not found")
+    candidate = row[0]
+    if candidate.get("discovery_status") != "pending_verification":
+        raise HTTPException(status_code=409, detail="This catalog product is not awaiting verification")
+    source = _clean_source({
+        "product": candidate.get("title"),
+        "url": candidate.get("product_url"),
+        "game": candidate.get("tcg"),
+        "store": candidate.get("retailer"),
+        "set_name": candidate.get("set_name", ""),
+        "product_type": candidate.get("product_type", "other_pack_product"),
+        "priority": "normal",
+        "area": "Online",
+    })
+    sources = _all_sources()
+    if not any(canonical_product_key(item) == canonical_key for item in sources):
+        sources.append(source)
+        _write_sources(sources)
+    candidate["discovery_status"] = "monitoring"
+    candidate["approved_at"] = now_iso()
+    upsert_catalog_product(candidate)
+    return {"approved": True, "source": {**source, "id": source_id(source)}}
+
+
+@app.post("/api/admin/catalog/{canonical_key}/reject")
+async def reject_catalog_product(canonical_key: str, authorization: str = Header(default="")):
+    require_admin(authorization)
+    if not database_enabled():
+        raise HTTPException(status_code=503, detail="PostgreSQL is required for discovery review")
+    with _database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT payload FROM radar_catalog_products WHERE canonical_key = %s", (canonical_key,))
+            row = cursor.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Discovered product was not found")
+    candidate = row[0]
+    candidate["discovery_status"] = "rejected"
+    candidate["rejected_at"] = now_iso()
+    upsert_catalog_product(candidate)
+    return {"rejected": True}
+
+
 @app.get("/api/admin/products")
 async def admin_products(authorization: str = Header(default="")):
     role = require_product_manager(authorization)
