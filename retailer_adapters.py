@@ -189,7 +189,9 @@ class BestBuyAdapter(RetailerAdapter):
             if str(node.get("@type", "")).lower() != "product":
                 continue
             sku = str(node.get("sku") or node.get("productID") or "")
-            if expected_id and sku and sku != expected_id:
+            # Ignore JSON-LD records that are not explicitly tied to this SKU;
+            # Best Buy pages can include in-stock related/recommended products.
+            if expected_id and sku != expected_id:
                 continue
             for offer in _offer_list(node):
                 availability = str(offer.get("availability", "")).lower()
