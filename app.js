@@ -305,6 +305,25 @@ $("#ownerBtn").addEventListener("click",showOwner);
 $("#closeOwnerBtn").addEventListener("click",()=>$("#ownerDialog").close());
 $("#testPushBtn").addEventListener("click",async()=>{ $("#ownerMessage").textContent="Test scheduled—close TCG Radar completely now."; try{const result=await ownerFetch("/api/admin/push/test",{method:"POST"}); $("#ownerMessage").textContent=result.attempted?"Test scheduled for 10 seconds. Close TCG Radar completely now.":"No phones are subscribed yet—tap Enable Push Alerts on the main screen first.";}catch(error){$("#ownerMessage").textContent=error.message;} });
 $("#announcementForm").addEventListener("submit",async event=>{event.preventDefault(); try{const result=await ownerFetch("/api/admin/announcements",{method:"POST",body:JSON.stringify({title:$("#announcementTitle").value,body:$("#announcementBody").value,url:location.href})}); $("#announcementBody").value=""; $("#ownerMessage").textContent=result.attempted?`Message sent to ${result.attempted} subscribed phone(s).`:"No phones are subscribed yet.";}catch(error){$("#ownerMessage").textContent=error.message;}});
+async function loadDiscoveryReview(){
+  try{
+    const data=await ownerFetch("/api/admin/discovery");
+    const items=(await ownerFetch("/api/admin/catalog?status=pending_verification")).items||[];
+    $("#discoverySummary").textContent="Best Buy discovery: "+(data.enabled?"enabled":"off")+" • "+(data.pending_verification||0)+" pending • "+(data.catalog_products||0)+" catalog products";
+    const list=$("#discoveryProducts"); list.innerHTML="";
+    if(!items.length){list.innerHTML="<small>No product candidates are waiting for review.</small>";return;}
+    for(const item of items){
+      const row=document.createElement("div"); row.className="owner-product";
+      row.innerHTML='<span><strong></strong><small></small></span><div class="product-actions"><button type="button" class="approve">Approve monitor</button><button type="button" class="remove">Reject</button></div>';
+      row.querySelector("strong").textContent=item.title||"Unnamed discovery";
+      row.querySelector("small").textContent=(item.retailer||"Unknown retailer")+" • "+(item.tcg||"Other")+(item.set_name?" • "+item.set_name:"")+" • "+String(item.product_type||"other").replaceAll("_"," ");
+      row.querySelector(".approve").onclick=async()=>{try{await ownerFetch("/api/admin/catalog/"+encodeURIComponent(item.canonical_key)+"/approve",{method:"POST"});await loadDiscoveryReview();await loadManagerControls();}catch(error){$("#ownerMessage").textContent=error.message;}};
+      row.querySelector(".remove").onclick=async()=>{try{await ownerFetch("/api/admin/catalog/"+encodeURIComponent(item.canonical_key)+"/reject",{method:"POST"});await loadDiscoveryReview();}catch(error){$("#ownerMessage").textContent=error.message;}};
+      list.appendChild(row);
+    }
+  }catch(error){$("#discoverySummary").textContent=error.message;}
+}
+$("#loadDiscoveryBtn").addEventListener("click",loadDiscoveryReview);
 async function loadReports(){try{const data=await ownerFetch("/api/admin/reports"); const list=$("#ownerReports"); list.innerHTML=""; if(!(data.items||[]).length){list.innerHTML="<small>No user reports yet.</small>";return;} for(const report of data.items){const row=document.createElement("div"); row.className="owner-product"; row.innerHTML=`<span><strong></strong><small></small></span>`; row.querySelector("strong").textContent=report.reason.replaceAll("_"," "); row.querySelector("small").textContent=`Product ${report.product_id} • ${new Date(report.created_at).toLocaleString()}`; list.appendChild(row);}}catch(error){$("#ownerMessage").textContent=error.message;}}
 $("#loadReportsBtn").addEventListener("click",loadReports);
 async function loadModerators(){try{const data=await ownerFetch("/api/admin/moderators"); const list=$("#moderatorList"); list.innerHTML=""; for(const moderator of data.items||[]){const row=document.createElement("div"); row.className="owner-product"; row.innerHTML=`<span><strong></strong><small>Can add and remove tracked URLs only</small></span><button type="button" class="remove">Remove</button>`; row.querySelector("strong").textContent=moderator.name; row.querySelector("button").onclick=async()=>{if(!confirm(`Remove ${moderator.name}'s moderator access?`))return; try{await ownerFetch(`/api/admin/moderators/${moderator.id}`,{method:"DELETE"}); await loadModerators();}catch(error){$("#ownerMessage").textContent=error.message;}}; list.appendChild(row);}}catch(error){$("#ownerMessage").textContent=error.message;}}
