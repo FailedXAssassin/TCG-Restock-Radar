@@ -536,3 +536,12 @@ or expensive alert subscriptions.**
 - Product monitoring and owner product CRUD now accept only HTTPS product pages on approved official retailer domains with retailer-specific stable product-path patterns.
 - Shortened links, guessed cart URLs, arbitrary hosts, and marketplace URLs are rejected or ignored.
 - Existing two-check confirmation, official-seller verification, and respectful backoff rules remain unchanged.
+
+
+### 2026-09-16 — Best Buy discovery foundation
+
+- Added a reusable retailer-adapter contract and a conservative Best Buy adapter.
+- Best Buy discovery uses only public category/search pages and stable public product URLs; no undocumented endpoints, CAPTCHA workarounds, or marketplace inference.
+- Discovery is disabled by default with `TCG_RADAR_BEST_BUY_DISCOVERY_ENABLED`. PostgreSQL is required; candidates are stored as `pending_verification` and are not placed into the live monitored/alerting list until a product-page check can prove retailer-direct seller and availability.
+- Added catalog, persistent monitor-state, observation, discovery-run, and adapter-health tables. Manual sources are mirrored into the canonical catalog without replacing `radar_products`.
+- Verified adapter tests pass; server, parser, and adapter files compile. Full server tests still need the project dependencies available in the execution environment.
