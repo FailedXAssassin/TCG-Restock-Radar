@@ -266,6 +266,16 @@
           <input id="announcementBody" required maxlength="240" placeholder="Example: Target drop expected around 3 AM ET — good luck!" />
           <button type="submit">Send member message</button>
         </form>
+        <form id="verifiedDropForm" class="product-form">
+          <h3>Post owner-confirmed retailer drop</h3>
+          <p class="muted">For a live retailer-direct product only. It appears in Alert History and notifies only members whose filters match.</p>
+          <input id="verifiedDropProduct" required maxlength="160" placeholder="Product name" />
+          <div class="form-grid"><select id="verifiedDropGame"><option>Pokemon</option><option>One Piece</option><option>Magic</option><option>Other</option></select><select id="verifiedDropStore"><option>Walmart</option><option>Target</option><option>Amazon</option><option>Best Buy</option><option>GameStop</option><option>Costco</option><option>Sam's Club</option><option>CVS</option><option>Walgreens</option></select></div>
+          <input id="verifiedDropUrl" required type="url" placeholder="Exact official retailer product link" />
+          <div class="form-grid"><input id="verifiedDropPrice" type="number" min="0" step="0.01" placeholder="Current price (optional)" /><input id="verifiedDropMsrp" type="number" min="0.01" step="0.01" placeholder="MSRP (optional)" /></div>
+          <label class="choice-label"><input id="verifiedDropSeller" type="checkbox" required> I personally verified it is sold by the retailer, not a marketplace seller.</label>
+          <button type="submit">Post verified drop</button>
+        </form>
         </details>
         <details class="admin-section">
           <summary><span>♙ Moderator access<small>Create or remove product managers</small></span><span>⌄</span></summary>
