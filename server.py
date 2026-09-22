@@ -648,7 +648,7 @@ def _clean_push_preferences(payload):
     if max_markup is None or max_markup < 0 or max_markup > 999:
         raise HTTPException(status_code=422, detail="Alert markup must be between 0 and 999 percent")
     allowed_games = {"Pokemon", "One Piece", "Magic", "Other"}
-    allowed_stores = {"Walmart", "Target", "Amazon", "Best Buy", "GameStop"}
+    allowed_stores = {"Walmart", "Target", "Amazon", "Best Buy", "GameStop", "Costco", "Sam's Club", "CVS", "Walgreens"}
     games = [str(item) for item in payload.get("games", []) if str(item) in allowed_games]
     stores = [str(item) for item in payload.get("stores", []) if str(item) in allowed_stores]
     return {"max_markup": max_markup, "games": games, "stores": stores}
@@ -1874,6 +1874,35 @@ async def delete_moderator(moderator_id: str, authorization: str = Header(defaul
     _write_moderators(kept)
 
 
+def _matches_push_preferences(subscription, item):
+    preference = _clean_push_preferences(subscription.get("preferences"))
+    if preference["games"] and item.get("game") not in preference["games"]:
+        return False
+    if preference["stores"] and item.get("store") not in preference["stores"]:
+        return False
+    markup = safe_float(item.get("markup"))
+    return not (markup is not None and markup > preference["max_markup"])
+
+
+async def _broadcast_owner_confirmed_drop(event):
+    if not push_ready():
+        return
+    payload = {
+        "title": "TCG RADAR — OWNER CONFIRMED",
+        "body": f"{event['product']} • {event['store']}" + (f" • ${event['price']:.2f}" if event.get("price") is not None else ""),
+        "url": event["url"],
+        "tag": event["id"],
+    }
+    expired = []
+    for subscription in _subscriptions():
+        if not _matches_push_preferences(subscription, event):
+            continue
+        if await asyncio.to_thread(_send_web_push, subscription, payload):
+            expired.append(subscription.get("endpoint"))
+    if expired:
+        _write_subscriptions([item for item in _subscriptions() if item.get("endpoint") not in expired])
+
+
 async def _broadcast_announcement(title, body, url):
     payload = {"title": title, "body": body, "url": url, "tag": f"announcement-{int(time.time())}"}
     expired = []
@@ -1882,6 +1911,56 @@ async def _broadcast_announcement(title, body, url):
             expired.append(subscription.get("endpoint"))
     if expired:
         _write_subscriptions([item for item in _subscriptions() if item.get("endpoint") not in expired])
+
+
+@app.post("/api/admin/verified-drops", status_code=201)
+async def create_verified_drop(payload: dict, authorization: str = Header(default="")):
+    # This is an owner-only, explicitly human-confirmed signal. It is never
+    # presented as a retailer inventory scan and it still uses the subscriber's
+    # game, retailer and price filters.
+    require_admin(authorization)
+    product = str(payload.get("product", "")).strip()[:160]
+    game = str(payload.get("game", "")).strip()
+    url = str(payload.get("url", "")).strip()
+    declared_store = str(payload.get("store", "")).strip()
+    store = retailer_name(url, declared_store)
+    price = safe_float(payload.get("price"))
+    msrp = safe_float(payload.get("msrp"))
+    if not product or game not in {"Pokemon", "One Piece", "Magic", "Other"}:
+        raise HTTPException(status_code=422, detail="A product name and supported game are required")
+    if not verified_product_url(url):
+        raise HTTPException(status_code=422, detail="Use an exact HTTPS product page from a supported retailer")
+    if declared_store and store != declared_store:
+        raise HTTPException(status_code=422, detail="The retailer must match the product link")
+    if payload.get("seller_confirmed") is not True:
+        raise HTTPException(status_code=422, detail="Confirm that the retailer itself is the seller before posting")
+    if price is not None and price < 0:
+        raise HTTPException(status_code=422, detail="Price cannot be negative")
+    if msrp is not None and msrp <= 0:
+        raise HTTPException(status_code=422, detail="MSRP must be greater than zero")
+    markup = None if price is None or msrp is None else round(((price - msrp) / msrp) * 100, 1)
+    event = {
+        "id": f"owner-confirmed-{secrets.token_urlsafe(10)}",
+        "product_id": f"owner-confirmed-{secrets.token_urlsafe(8)}",
+        "product": product,
+        "game": game,
+        "store": store,
+        "url": url,
+        "status": "in_stock",
+        "price": round(price, 2) if price is not None else None,
+        "msrp": round(msrp, 2) if msrp is not None else None,
+        "markup": markup,
+        "source": "owner_confirmed",
+        "verification": "Owner-confirmed retailer-direct listing",
+        "created_at": now_iso(),
+    }
+    _write_alert_event(event)
+    attempted = 0
+    if push_ready():
+        attempted = sum(1 for subscription in _subscriptions() if _matches_push_preferences(subscription, event))
+        if attempted:
+            asyncio.create_task(_broadcast_owner_confirmed_drop(event))
+    return {**event, "push_attempted": attempted}
 
 
 @app.post("/api/admin/announcements")
