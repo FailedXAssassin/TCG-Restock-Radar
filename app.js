@@ -204,7 +204,7 @@ async function loadAlerts(){
     for(const item of items.slice(0,20)){
       const row=document.createElement("a"); row.className="alert-row"; row.href=item.url||"#"; row.target="_blank"; row.rel="noopener";
       const title=document.createElement("strong"); title.textContent=item.product||"Product update";
-      const detail=document.createElement("span"); detail.textContent=`${item.store||"Retailer"} • ${statusLabels[item.status]||item.status||"Updated"}`;
+      const detail=document.createElement("span"); const source=item.source==="owner_confirmed"?"🔵 Owner-confirmed direct drop":(statusLabels[item.status]||item.status||"Updated"); detail.textContent=`${item.store||"Retailer"} • ${source}`;
       const time=document.createElement("time"); time.dateTime=item.created_at||""; time.textContent=item.created_at?new Date(item.created_at).toLocaleString():"";
       row.append(title,detail,time); list.appendChild(row);
     }
@@ -305,6 +305,7 @@ $("#ownerBtn").addEventListener("click",showOwner);
 $("#closeOwnerBtn").addEventListener("click",()=>$("#ownerDialog").close());
 $("#testPushBtn").addEventListener("click",async()=>{ $("#ownerMessage").textContent="Test scheduled—close TCG Radar completely now."; try{const result=await ownerFetch("/api/admin/push/test",{method:"POST"}); $("#ownerMessage").textContent=result.attempted?"Test scheduled for 10 seconds. Close TCG Radar completely now.":"No phones are subscribed yet—tap Enable Push Alerts on the main screen first.";}catch(error){$("#ownerMessage").textContent=error.message;} });
 $("#announcementForm").addEventListener("submit",async event=>{event.preventDefault(); try{const result=await ownerFetch("/api/admin/announcements",{method:"POST",body:JSON.stringify({title:$("#announcementTitle").value,body:$("#announcementBody").value,url:location.href})}); $("#announcementBody").value=""; $("#ownerMessage").textContent=result.attempted?`Message sent to ${result.attempted} subscribed phone(s).`:"No phones are subscribed yet.";}catch(error){$("#ownerMessage").textContent=error.message;}});
+$("#verifiedDropForm").addEventListener("submit",async event=>{event.preventDefault(); try{const result=await ownerFetch("/api/admin/verified-drops",{method:"POST",body:JSON.stringify({product:$("#verifiedDropProduct").value,game:$("#verifiedDropGame").value,store:$("#verifiedDropStore").value,url:$("#verifiedDropUrl").value,price:$("#verifiedDropPrice").value||null,msrp:$("#verifiedDropMsrp").value||null,seller_confirmed:$("#verifiedDropSeller").checked})}); event.target.reset(); $("#ownerMessage").textContent=result.push_attempted?`Owner-confirmed drop posted for ${result.push_attempted} matching phone(s).`:"Owner-confirmed drop posted to Alert History; no subscribed phones matched it yet."; await loadAlerts();}catch(error){$("#ownerMessage").textContent=error.message;}});
 async function loadDiscoveryReview(){
   try{
     const data=await ownerFetch("/api/admin/discovery");
