@@ -249,7 +249,7 @@ def load_sources():
         if not isinstance(source, dict):
             continue
 
-        if not source.get("enabled", True):
+        if not source.get("enabled", True) or not source.get("published", True):
             continue
 
         url = str(source.get("url", "")).strip()
@@ -446,6 +446,7 @@ async def _verify_and_begin_monitoring(candidate, adapter):
         "product_type": candidate.get("product_type", "other_pack_product"),
         "priority": "normal",
         "area": "Online",
+        "published": True,
     })
     candidate.update({
         "discovery_status": "monitoring",
@@ -731,6 +732,8 @@ def _clean_source(payload):
             raise HTTPException(status_code=422, detail="Pack count must be between 1 and 1000")
     return {
         "enabled": bool(payload.get("enabled", True)),
+        # New manager entries are staged until an owner explicitly publishes them.
+        "published": bool(payload.get("published", False)),
         "game": str(payload.get("game", "Other")).strip() or "Other",
         "area": str(payload.get("area", "Online")).strip() or "Online",
         "store": retailer_name(url, str(payload.get("store", "")).strip()),
@@ -746,6 +749,13 @@ def _clean_source(payload):
         **_stock_estimate_fields(payload),
         "official_seller_only": True,
     }
+
+
+def monitored_product_key(source):
+    """Prevent duplicate product names at the same retailer, even with a new URL."""
+    retailer = retailer_name(str(source.get("url", "")), str(source.get("store", ""))).casefold()
+    title = re.sub(r"[^a-z0-9]+", " ", str(source.get("product", "")).casefold()).strip()
+    return f"{retailer}|{title}"
 
 
 def require_admin(authorization=Header(default="")):
@@ -2342,13 +2352,29 @@ async def admin_products(authorization: str = Header(default="")):
 @app.post("/api/admin/products", status_code=201)
 async def add_product(payload: dict, authorization: str = Header(default="")):
     require_product_manager(authorization)
-    source = _clean_source(payload)
+    source = _clean_source({**payload, "published": False})
     sources = _all_sources()
     if any(source.get("url") == item.get("url") for item in sources):
         raise HTTPException(status_code=409, detail="That product URL is already being monitored")
+    if any(monitored_product_key(source) == monitored_product_key(item) for item in sources):
+        raise HTTPException(status_code=409, detail="That retailer and product are already in the tracking list")
     sources.append(source)
     _write_sources(sources)
-    return {**source, "id": source_id(source)}
+    return {**source, "id": source_id(source), "staged": True}
+
+
+@app.post("/api/admin/products/publish")
+async def publish_staged_products(authorization: str = Header(default="")):
+    require_admin(authorization)
+    sources = _all_sources()
+    published = 0
+    for source in sources:
+        if not source.get("published", True):
+            source["published"] = True
+            published += 1
+    if published:
+        _write_sources(sources)
+    return {"published": published, "message": f"Published {published} staged item(s) to live monitoring"}
 
 
 @app.patch("/api/admin/products/{product_id}")
@@ -2374,6 +2400,8 @@ async def update_product(product_id: str, payload: dict, authorization: str = He
         source = _clean_source({**current, **payload})
         if any(index != other_index and source.get("url") == other.get("url") for other_index, other in enumerate(sources)):
             raise HTTPException(status_code=409, detail="That product URL is already being monitored")
+        if any(index != other_index and monitored_product_key(source) == monitored_product_key(other) for other_index, other in enumerate(sources)):
+            raise HTTPException(status_code=409, detail="That retailer and product are already in the tracking list")
         sources[index] = source
         products.pop(product_id, None)
         _write_sources(sources)
