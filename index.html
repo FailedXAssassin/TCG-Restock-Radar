@@ -242,7 +242,14 @@
   <dialog id="accountDialog">
     <div class="dialog-card account-dialog-card"><div class="dialog-title"><h2>Account</h2><button id="closeAccountBtn" type="button" class="secondary">Close</button></div>
       <p class="muted">Sign in with Google to keep your purchases when you change phones or reinstall TCG Radar.</p>
-      <div id="accountStatus" class="account-status">Checking account setup…</div><div id="googleSignIn"></div><button id="signOutBtn" type="button" class="secondary" hidden>Sign out</button>
+      <div id="accountStatus" class="account-status">Checking account setup…</div><div id="googleSignIn"></div>
+      <form id="nicknameForm" class="product-form" hidden>
+        <label for="publicNickname">Public nickname</label>
+        <input id="publicNickname" required maxlength="24" autocomplete="nickname" placeholder="2–24 characters" />
+        <small class="muted">Shown publicly instead of your real name or email.</small>
+        <button type="submit">Save nickname</button>
+      </form>
+      <button id="signOutBtn" type="button" class="secondary" hidden>Sign out</button>
     </div>
   </dialog>
 
@@ -342,9 +349,16 @@
           <input id="confirmOwnerPin" required type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="20" pattern="[0-9]{4,20}" placeholder="Re-enter new PIN" />
           <button type="submit">OK</button>
         </form>
+        <form id="ownerNicknameForm" class="product-form">
+          <h3>Owner nickname</h3>
+          <input id="ownerNickname" required maxlength="24" autocomplete="nickname" placeholder="Your public nickname" />
+          <small class="muted">Owner names appear bold with a rainbow label.</small>
+          <button type="submit">Save owner nickname</button>
+        </form>
         <form id="moderatorForm" class="product-form">
-          <h3>Moderators</h3>
-          <div class="form-grid"><input id="moderatorName" required maxlength="60" placeholder="Moderator name" /><input id="moderatorPin" required type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="20" pattern="[0-9]{4,20}" placeholder="Set 4–20 digit moderator PIN" /><button type="submit">Save moderator PIN</button></div>
+          <h3>Moderator roster</h3>
+          <p class="muted">Each nickname is public and can only belong to one person.</p>
+          <div class="form-grid"><input id="moderatorName" required maxlength="24" autocomplete="nickname" placeholder="Unique moderator nickname" /><input id="moderatorPin" required type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="20" pattern="[0-9]{4,20}" placeholder="Temporary 4–20 digit PIN" /><button type="submit">Add moderator</button></div>
         </form>
         <div id="moderatorList" class="owner-products"></div>
         </details>
