@@ -424,6 +424,7 @@ async function loadDiscoveryReview(){
     }
   }catch(error){$("#discoverySummary").textContent=error.message;}
 }
+$("#runDiscoveryBtn").addEventListener("click",async()=>{try{$("#discoverySummary").textContent="Running bounded public discovery and first-party verification…";const run=await ownerFetch("/api/admin/discovery/run",{method:"POST"});$("#discoverySummary").textContent=`Best Buy discovery: ${run.discovered||0} found • ${run.verified||0} first-party verified • ${run.monitoring_started||0} monitoring started`;await loadDiscoveryReview();}catch(error){$("#discoverySummary").textContent=error.message;}});
 $("#loadDiscoveryBtn").addEventListener("click",loadDiscoveryReview);
 async function loadReports(){try{const data=await ownerFetch("/api/admin/reports"); const list=$("#ownerReports"); list.innerHTML=""; if(!(data.items||[]).length){list.innerHTML="<small>No user reports yet.</small>";return;} for(const report of data.items){const row=document.createElement("div"); row.className="owner-product"; row.innerHTML=`<span><strong></strong><small></small></span>`; row.querySelector("strong").textContent=report.reason.replaceAll("_"," "); row.querySelector("small").textContent=`Product ${report.product_id} • ${new Date(report.created_at).toLocaleString()}`; list.appendChild(row);}}catch(error){$("#ownerMessage").textContent=error.message;}}
 $("#loadReportsBtn").addEventListener("click",loadReports);
