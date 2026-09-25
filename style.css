@@ -232,3 +232,7 @@ body:before{right:50%;bottom:12vh;transform:translateX(50%);width:min(82vw,460px
 #ownerDialog .admin-page{box-sizing:border-box;min-height:100%}
 #ownerMessage:empty{display:none;margin:0}
 #ownerBtn{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+
+
+/* A component class must never override the semantic hidden attribute. */
+[hidden]{display:none!important}
