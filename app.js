@@ -609,8 +609,25 @@ async function loadIntakeSources(){
   }
 }
 
+const MANAGER_SUMMARY_KEY="tcg-radar-manager-summary";
+function showManagerSummary(summary){
+  if(!summary||!summary.role)return;
+  $("#adminOverview").hidden=false;
+  $("#adminRole").textContent=summary.role==="owner"?"Owner session":"Moderator session";
+  $("#adminProductCount").textContent=String(summary.product_count??0);
+  $("#adminAccess").textContent=summary.role==="owner"?"Full command access":"Product links only";
+}
+function showCachedManagerSummary(){
+  try{showManagerSummary(JSON.parse(localStorage.getItem(MANAGER_SUMMARY_KEY)||"null"));}catch(_){}
+}
+function saveManagerSummary(role, productCount){
+  localStorage.setItem(MANAGER_SUMMARY_KEY,JSON.stringify({role,product_count:productCount,updated_at:Date.now()}));
+}
+
 async function loadManagerControls(){
-  $("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true; $("#adminOverview").hidden=true;
+  $("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true;
+  // Keep the last verified summary visible while the fresh server request runs.
+  showCachedManagerSummary();
   try{
     const [data,settings]=await Promise.all([ownerFetch("/api/admin/products"),ownerFetch("/api/admin/priority-automation")]);
     priorityAutomation=settings||priorityAutomation;
@@ -626,7 +643,9 @@ async function loadManagerControls(){
     $("#publishTrackingWrap").hidden=managerRole!=="owner";
     $("#publishStagedBtn").disabled=!staged;
     $("#stagedCount").textContent=staged ? (staged+" staged item"+(staged===1?"":"s")+" waiting to go live") : "No staged items waiting";
-    $("#adminOverview").hidden=false; $("#adminRole").textContent=managerRole==="owner"?"Owner session":"Moderator session"; $("#adminProductCount").textContent=(data.items||[]).length; $("#adminAccess").textContent=managerRole==="owner"?"Full command access":"Product links only";
+    const summary={role:managerRole,product_count:(data.items||[]).length};
+    saveManagerSummary(summary.role,summary.product_count);
+    showManagerSummary(summary);
     if(managerRole==="owner"){await loadModerators(); await loadOwnerPinStatus(); await loadHelpInbox(); await loadIntakeSources(); clearInterval(helpPollTimer); helpPollTimer=setInterval(loadHelpInbox,20000);}
     $("#ownerMessage").textContent="";
   }catch(error){$("#managerLogin").hidden=false; $("#adminOverview").hidden=true; $("#ownerMessage").textContent=error.message;}
