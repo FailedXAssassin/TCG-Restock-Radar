@@ -575,9 +575,35 @@ function hasManagerIdentity(){return Boolean(accountUser?.is_owner||knownModerat
 function applyManagerVisibility(){const tracker=$("#activeTrackerSnapshot");if(tracker)tracker.hidden=!hasManagerAccess();$("#healthSection").hidden=!hasManagerAccess()||activePage!=="radar";}
 function showPinFeedback(title,text){$("#pinFeedbackTitle").textContent=title;$("#pinFeedbackText").textContent=text;$("#pinFeedbackDialog").showModal();}
 $("#closePinFeedbackBtn").addEventListener("click",()=>$("#pinFeedbackDialog").close());
+async function loadMissingImageReview(){
+  const list=$("#missingImageReview");
+  if(!list)return;
+  try{
+    const data=await ownerFetch("/api/admin/products/missing-images");
+    list.innerHTML="";
+    const items=data.items||[];
+    if(!items.length){list.innerHTML="<small>All tracked products currently have an image.</small>";return;}
+    const heading=document.createElement("small");
+    heading.textContent=`${data.remaining} product${data.remaining===1?"":"s"} still need an image. Showing the first ${items.length}.`;
+    list.appendChild(heading);
+    for(const item of items){
+      const row=document.createElement("div");row.className="owner-product";
+      const text=document.createElement("span");const title=document.createElement("strong");const detail=document.createElement("small");
+      title.textContent=item.product||"Unnamed product";
+      detail.textContent=`${item.store||"Retailer"} • ${item.game||"Other"} • no stock image yet`;
+      text.append(title,detail);
+      const open=document.createElement("a");open.className="secondary";open.target="_blank";open.rel="noopener";open.href=item.url||"#";open.textContent="Open retailer";
+      row.append(text,open);list.appendChild(row);
+    }
+  }catch(error){list.innerHTML="<small>Could not load missing image review.</small>";}
+}
 async function refreshMissingImages(){
-  const message=$("#maintenanceMessage");message.textContent="Checking up to 10 official retailer pages for missing images…";
-  try{const result=await ownerFetch("/api/admin/products/refresh-images",{method:"POST",body:JSON.stringify({limit:10})});message.textContent=result.message;await loadManagerControls();}catch(error){message.textContent=error.message;}
+  const message=$("#maintenanceMessage");message.textContent="Checking up to 25 missing items for an official stock image…";
+  try{
+    const result=await ownerFetch("/api/admin/products/refresh-images",{method:"POST",body:JSON.stringify({limit:25})});
+    message.textContent=result.message;
+    await Promise.all([loadMissingImageReview(),loadManagerControls()]);
+  }catch(error){message.textContent=error.message;}
 }
 async function requestServerRestart(confirmStaged=false){
   try{const result=await ownerFetch("/api/admin/restart",{method:"POST",body:JSON.stringify({confirm_staged:confirmStaged})});
@@ -655,7 +681,7 @@ async function loadManagerControls(){
     const summary={role:managerRole,product_count:(data.items||[]).length};
     saveManagerSummary(summary.role,summary.product_count);
     showManagerSummary(summary);
-    if(managerRole==="owner"){await loadModerators(); await loadOwnerPinStatus(); await loadHelpInbox(); await loadIntakeSources(); clearInterval(helpPollTimer); helpPollTimer=setInterval(loadHelpInbox,20000);}
+    if(managerRole==="owner"){await loadModerators(); await loadOwnerPinStatus(); await loadHelpInbox(); await loadIntakeSources(); await loadMissingImageReview(); clearInterval(helpPollTimer); helpPollTimer=setInterval(loadHelpInbox,20000);}
     $("#ownerMessage").textContent="";
   }catch(error){$("#managerLogin").hidden=false; $("#adminOverview").hidden=true; $("#ownerMessage").textContent=error.message;}
 }
