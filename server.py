@@ -147,7 +147,7 @@ VERIFIED_PRODUCT_PATHS = {
     "amazon.com": re.compile(r"/(?:dp|gp/product)/", re.I),
     "costco.com": re.compile(r"/(?:p/|[^/]*\.product\.\d+\.html)", re.I),
     "samsclub.com": re.compile(r"/(?:s|ip)/", re.I),
-    "cvs.com": re.compile(r"/shop/p/", re.I),
+    "cvs.com": re.compile(r"/shop/(?:p/)?[^/]*prodid-\d+", re.I),
     "walgreens.com": re.compile(r"/store/c/", re.I),
 }
 
