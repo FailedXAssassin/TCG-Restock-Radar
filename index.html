@@ -31,7 +31,7 @@
 
     <section class="radar-snapshot" data-page="radar" aria-label="Radar snapshot">
       <article class="snapshot-card"><span class="snapshot-icon">◉</span><div><small>Confirmed now</small><strong id="confirmedCount">0</strong></div></article>
-      <article class="snapshot-card"><span class="snapshot-icon">⌁</span><div><small>Active trackers</small><strong id="activeCount">0</strong></div></article>
+      <article id="activeTrackerSnapshot" class="snapshot-card"><span class="snapshot-icon">⌁</span><div><small>Active trackers</small><strong id="activeCount">0</strong></div></article>
       <article class="snapshot-card snapshot-highlight"><span class="snapshot-icon">✦</span><div><small>Latest verified</small><strong id="latestVerified">Waiting for a scan</strong></div></article>
     </section>
 
@@ -337,7 +337,15 @@
         </details>
       </section>
       <p id="ownerMessage" class="muted"></p>
-      <details class="admin-section" open><summary><span>⌘ Tracked products<small>Pause, resume, or remove links</small></span><span>⌄</span></summary><div id="ownerProducts" class="owner-products"></div></details>
+      <details class="admin-section" open><summary><span>⌘ Tracked products<small>Pause, resume, or remove links</small></span><span>⌄</span></summary><div class="owner-list-controls">
+          <input id="ownerProductSearch" type="search" placeholder="Search tracked products or retailers" autocomplete="off" />
+          <select id="ownerProductSort" aria-label="Sort tracked products">
+            <option value="newest" selected>Newest</option>
+            <option value="oldest">Oldest</option>
+            <option value="alphabetical">Alphabetical</option>
+          </select>
+        </div>
+        <div id="ownerProducts" class="owner-products"></div></details>
     </div>
   </dialog>
 
