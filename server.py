@@ -26,6 +26,7 @@ DATA_DIR = Path(os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", ROOT))
 SOURCES_FILE = Path(os.environ.get("TCG_RADAR_DATA_PATH", DATA_DIR / "sources.json"))
 PUSH_SUBSCRIPTIONS_FILE = Path(os.environ.get("TCG_RADAR_PUSH_SUBSCRIPTIONS_PATH", DATA_DIR / "push_subscriptions.json"))
 MODERATORS_FILE = Path(os.environ.get("TCG_RADAR_MODERATORS_PATH", DATA_DIR / "moderators.json"))
+OWNER_PIN_FILE = Path(os.environ.get("TCG_RADAR_OWNER_PIN_PATH", DATA_DIR / "owner_pin.json"))
 ALERT_HISTORY_FILE = Path(os.environ.get("TCG_RADAR_ALERT_HISTORY_PATH", DATA_DIR / "alert_history.json"))
 AUTHORIZED_INTAKE_FILE = Path(os.environ.get("TCG_RADAR_AUTHORIZED_INTAKE_PATH", DATA_DIR / "authorized_intake_sources.json"))
 PRIORITY_AUTOMATION_FILE = Path(os.environ.get("TCG_RADAR_PRIORITY_AUTOMATION_PATH", DATA_DIR / "priority_automation.json"))
@@ -771,21 +772,75 @@ def clean_image_url(value):
     return image_url
 
 
-def require_admin(authorization=Header(default="")):
-    token = authorization.removeprefix("Bearer ").strip()
-    if ADMIN_SECRET and token and secrets.compare_digest(token, ADMIN_SECRET):
-        return "owner"
-    try:
-        user = google_user(authorization)
-        if user.get("is_owner"):
-            return "owner"
-    except HTTPException:
-        pass
-    raise HTTPException(status_code=401, detail="Owner authentication is not valid")
+PIN_PATTERN = re.compile(r"^\d{4,20}$")
 
 
 def _token_hash(token):
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _owner_pin_hash():
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT payload FROM radar_settings WHERE key = %s", ("owner_pin",))
+                row = cursor.fetchone()
+        if not row:
+            return ""
+        payload = row[0]
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except json.JSONDecodeError:
+                payload = {}
+        return str((payload or {}).get("hash", ""))
+    if not OWNER_PIN_FILE.exists():
+        return ""
+    try:
+        payload = json.loads(OWNER_PIN_FILE.read_text(encoding="utf-8"))
+        return str((payload or {}).get("hash", ""))
+    except (OSError, json.JSONDecodeError):
+        return ""
+
+
+def _write_owner_pin_hash(pin_hash):
+    payload = {"hash": pin_hash, "updated_at": now_iso()}
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO radar_settings (key, payload) VALUES (%s, %s::jsonb) "
+                    "ON CONFLICT (key) DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()",
+                    ("owner_pin", json.dumps(payload)),
+                )
+            connection.commit()
+        return
+    temporary = OWNER_PIN_FILE.with_suffix(".tmp")
+    temporary.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(OWNER_PIN_FILE)
+
+
+def _is_google_owner(authorization):
+    try:
+        return bool(google_user(authorization).get("is_owner"))
+    except HTTPException:
+        return False
+
+
+def _is_owner_pin(token):
+    stored_hash = _owner_pin_hash()
+    return bool(token and stored_hash and secrets.compare_digest(_token_hash(token), stored_hash))
+
+
+def require_admin(authorization=Header(default="")):
+    token = authorization.removeprefix("Bearer ").strip()
+    if ADMIN_SECRET and token and secrets.compare_digest(token, ADMIN_SECRET):
+        return "owner"
+    if _is_owner_pin(token):
+        return "owner"
+    if _is_google_owner(authorization):
+        return "owner"
+    raise HTTPException(status_code=401, detail="Incorrect PIN")
 
 
 def _moderators():
@@ -821,17 +876,15 @@ def manager_role(authorization=Header(default="")):
     token = authorization.removeprefix("Bearer ").strip()
     if ADMIN_SECRET and token and secrets.compare_digest(token, ADMIN_SECRET):
         return "owner"
-    try:
-        user = google_user(authorization)
-        if user.get("is_owner"):
-            return "owner"
-    except HTTPException:
-        pass
+    if _is_owner_pin(token):
+        return "owner"
+    if _is_google_owner(authorization):
+        return "owner"
     hashed = _token_hash(token) if token else ""
     for moderator in _moderators():
         if hashed and secrets.compare_digest(hashed, moderator.get("secret_hash", "")):
             return "moderator"
-    raise HTTPException(status_code=401, detail="That owner or moderator code was not accepted")
+    raise HTTPException(status_code=401, detail="Incorrect PIN")
 
 
 def require_product_manager(authorization=Header(default="")):
@@ -2612,6 +2665,25 @@ async def delete_product(product_id: str, authorization: str = Header(default=""
     _write_sources(remaining)
 
 
+@app.get("/api/admin/owner-pin")
+async def owner_pin_status(authorization: str = Header(default="")):
+    require_admin(authorization)
+    return {"configured": bool(_owner_pin_hash()), "min_length": 4, "max_length": 20}
+
+
+@app.put("/api/admin/owner-pin")
+async def set_owner_pin(payload: dict, authorization: str = Header(default="")):
+    # Only the verified Google owner or existing recovery secret may set the owner PIN.
+    token = authorization.removeprefix("Bearer ").strip()
+    if not ((ADMIN_SECRET and token and secrets.compare_digest(token, ADMIN_SECRET)) or _is_google_owner(authorization)):
+        raise HTTPException(status_code=403, detail="Sign in with the owner Google account to change the owner PIN")
+    pin = str(payload.get("pin", "")).strip()
+    if not PIN_PATTERN.fullmatch(pin):
+        raise HTTPException(status_code=422, detail="PIN must be 4 to 20 numbers")
+    _write_owner_pin_hash(_token_hash(pin))
+    return {"configured": True, "message": "Owner PIN saved"}
+
+
 @app.get("/api/admin/moderators")
 async def list_moderators(authorization: str = Header(default="")):
     require_admin(authorization)
@@ -2624,7 +2696,9 @@ async def add_moderator(payload: dict, authorization: str = Header(default="")):
     name = str(payload.get("name", "")).strip()
     if not 2 <= len(name) <= 60:
         raise HTTPException(status_code=422, detail="Moderator name must be 2 to 60 characters")
-    access_code = secrets.token_urlsafe(18)
+    access_code = str(payload.get("access_code", "")).strip()
+    if not PIN_PATTERN.fullmatch(access_code):
+        raise HTTPException(status_code=422, detail="Moderator PIN must be 4 to 20 numbers")
     moderator = {"id": secrets.token_urlsafe(8), "name": name, "secret_hash": _token_hash(access_code)}
     moderators = _moderators()
     moderators.append(moderator)
