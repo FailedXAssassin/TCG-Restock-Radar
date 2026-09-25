@@ -205,3 +205,8 @@ body:before{right:50%;bottom:12vh;transform:translateX(50%);width:min(82vw,460px
 .action-toast{position:fixed;left:50%;bottom:82px;transform:translateX(-50%);z-index:20;width:max-content;max-width:calc(100% - 32px);padding:10px 14px;border:1px solid rgba(70,245,205,.38);border-radius:999px;background:#102d31;color:#e8fffb;box-shadow:0 10px 30px rgba(0,0,0,.35);font-size:.86rem;font-weight:700;text-align:center}
 
 .missed-alert{border-left:3px solid #ffb86b}.settings-toggle{display:flex;align-items:flex-start;gap:10px;padding:10px 0}.settings-toggle small{display:block;margin-top:3px;color:var(--muted)}#quietHoursFields label{display:grid;gap:6px;font-size:.85rem}
+
+.quiet-hours-setting{margin:14px 0;padding:13px;border:1px solid var(--line);border-radius:14px;background:color-mix(in srgb,var(--panel) 75%,transparent)}
+.quiet-hours-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.quiet-hours-fields label{font-size:.82rem;color:var(--muted)}
+.quiet-hours-fields select{width:100%;margin-top:5px}
