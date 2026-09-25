@@ -837,6 +837,18 @@ def optional_manager_role(authorization=""):
         return None
 
 
+def owner_feed_access(authorization=""):
+    """Allow the Google account configured as owner to see owner-only feed data."""
+    role = optional_manager_role(authorization)
+    if role:
+        return role
+    try:
+        user = google_user(authorization)
+        return "google_owner" if user.get("is_owner") else None
+    except HTTPException:
+        return None
+
+
 
 def _reports():
     if database_enabled():
@@ -2114,7 +2126,7 @@ def _feed_item_for_source(source: dict) -> dict:
 
 @app.get("/api/feed")
 async def feed(authorization: str = Header(default="")):
-    manager = optional_manager_role(authorization)
+    manager = owner_feed_access(authorization)
     all_items = [
         _feed_item_for_source(source)
         for source in load_sources()
