@@ -1137,6 +1137,21 @@ def extract_image_url(text):
     return None
 
 
+def extract_page_title(text):
+    patterns = [
+        r'<meta[^>]+property=["\']og:title["\'][^>]+content=["\']([^"\']+)',
+        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:title["\']',
+        r'<title[^>]*>(.*?)</title>',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, re.I | re.S)
+        if match:
+            title = re.sub(r"<[^>]+>", "", html.unescape(match.group(1))).strip()
+            if title:
+                return title[:180]
+    return None
+
+
 async def fetch_official_product_image(url):
     """Retrieve one public product-page image during an owner/moderator add."""
     try:
@@ -2405,6 +2420,32 @@ async def admin_products(authorization: str = Header(default="")):
     role = require_product_manager(authorization)
     sources = _all_sources()
     return {"role": role, "items": [{**source, "id": source_id(source)} for source in sources]}
+
+
+@app.post("/api/admin/products/test-link")
+async def test_official_product_link(payload: dict, authorization: str = Header(default="")):
+    require_product_manager(authorization)
+    url = canonical_product_url(payload.get("url", ""))
+    if not verified_product_url(url):
+        raise HTTPException(status_code=422, detail="Use a stable HTTPS product page from an approved official retailer")
+    try:
+        response = await http_client.get(
+            url,
+            headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml"},
+            timeout=12,
+        )
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="The retailer page could not be reached right now")
+    if response.status_code != 200:
+        raise HTTPException(status_code=422, detail=f"The retailer page returned HTTP {response.status_code}")
+    return {
+        "valid": True,
+        "url": url,
+        "retailer": retailer_name(url),
+        "title": extract_page_title(response.text),
+        "image_url": extract_image_url(response.text),
+        "message": "Official retailer product page reached. This test does not check or claim stock.",
+    }
 
 
 @app.post("/api/admin/products", status_code=201)
