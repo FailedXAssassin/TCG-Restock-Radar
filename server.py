@@ -1658,6 +1658,7 @@ async def scheduler():
     next_checks = {}
     retailer_ready_at = {}
     last_priority_pulse = None
+    startup_seeded = False
     max_parallel_retailers = 8
 
     while True:
@@ -1671,6 +1672,24 @@ async def scheduler():
         current = time.monotonic()
         wall_clock = datetime.now(timezone.utc)
         pulse = f"{wall_clock:%Y-%m-%dT%H}:{wall_clock.minute // 15}"
+
+        if not startup_seeded:
+            # After a restart, scan critical links first. We still stagger by
+            # retailer so a single store is never flooded during warm-up.
+            per_retailer_slot = {}
+            priority_rank = {"high": 0, "normal": 1, "low": 2}
+            for source in sorted(sources, key=lambda item: priority_rank.get(priority_for(item), 1)):
+                store = retailer_name(source["url"], source.get("store", "Unknown"))
+                slot = per_retailer_slot.get(store, 0)
+                if priority_for(source) == "high":
+                    delay = 1 + (slot * 3) + random.uniform(0, 0.8)
+                elif priority_for(source) == "normal":
+                    delay = 30 + (slot * 2) + random.uniform(0, 8)
+                else:
+                    delay = 75 + (slot * 2) + random.uniform(0, 12)
+                next_checks[source_id(source)] = current + delay
+                per_retailer_slot[store] = slot + 1
+            startup_seeded = True
 
         if (
             wall_clock.minute % 15 == 0
@@ -1691,9 +1710,14 @@ async def scheduler():
         for source in sources:
             key = source_id(source)
             if key not in next_checks:
-                # A brief, jittered start keeps startup gentle while every card
-                # is already visible to the user through /api/feed.
-                next_checks[key] = current + random.uniform(1, 15)
+                # Newly published high-priority links join the front of the
+                # queue; other new links stay gently staggered.
+                if priority_for(source) == "high":
+                    next_checks[key] = current + random.uniform(1, 4)
+                elif priority_for(source) == "normal":
+                    next_checks[key] = current + random.uniform(12, 25)
+                else:
+                    next_checks[key] = current + random.uniform(30, 50)
 
             if current < next_checks[key]:
                 continue
