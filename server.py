@@ -11,7 +11,7 @@ import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote_plus, urlparse
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Request
@@ -1322,6 +1322,63 @@ async def fetch_official_product_image(url):
             return extract_image_url(response.text)
     except (httpx.HTTPError, RuntimeError):
         pass
+    return None
+
+
+def _image_search_tokens(product_name):
+    ignored = {"pokemon", "pokémon", "trading", "card", "game", "tcg", "collection", "series", "the", "and"}
+    return [word for word in re.findall(r"[a-z0-9]+", str(product_name or "").lower()) if len(word) > 2 and word not in ignored][:8]
+
+
+def _is_pokemon_product(source):
+    return "pokemon" in str(source.get("game", "")).lower() or "pokemon" in str(source.get("product", "")).lower()
+
+
+async def fetch_pokemon_center_image(product_name):
+    """Use Pokémon Center only as a product-art fallback, never for availability."""
+    tokens = _image_search_tokens(product_name)
+    if len(tokens) < 2:
+        return None
+    try:
+        search_url = "https://www.pokemoncenter.com/search?q=" + quote_plus(str(product_name or "")[:140])
+        search = await http_client.get(
+            search_url,
+            headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml"},
+            timeout=12,
+        )
+        if search.status_code != 200:
+            return None
+        paths = re.findall(r'href=["\\'](/product/[^"\\'#?]+)', search.text, re.I)
+        seen = set()
+        for path in paths[:8]:
+            if path in seen:
+                continue
+            seen.add(path)
+            page = await http_client.get(
+                "https://www.pokemoncenter.com" + path,
+                headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml"},
+                timeout=12,
+            )
+            if page.status_code != 200:
+                continue
+            candidate_title = extract_title(page.text) or ""
+            candidate_words = set(_image_search_tokens(candidate_title))
+            if len(set(tokens).intersection(candidate_words)) < min(2, len(tokens)):
+                continue
+            image_url = extract_image_url(page.text)
+            if image_url:
+                return image_url
+    except (httpx.HTTPError, RuntimeError):
+        pass
+    return None
+
+
+async def fetch_best_product_image(source):
+    image_url = await fetch_best_product_image(source)
+    if image_url:
+        return image_url
+    if _is_pokemon_product(source):
+        return await fetch_pokemon_center_image(source.get("product", ""))
     return None
 
 
@@ -2664,7 +2721,7 @@ async def add_product(payload: dict, authorization: str = Header(default="")):
     source = _clean_source({**payload, "published": False, "added_at": now_iso()})
     # A manual HTTPS override wins; otherwise one public page read finds a thumbnail.
     if not source.get("image_url"):
-        image_url = await fetch_official_product_image(source["url"])
+        image_url = await fetch_best_product_image(source)
         if image_url:
             source["image_url"] = image_url
     sources = _all_sources()
@@ -2752,7 +2809,7 @@ async def update_product(product_id: str, payload: dict, authorization: str = He
         source = _clean_source({**current, **payload})
         # Clearing the override asks the app to use the official retailer page image again.
         if "image_url" in payload and not source.get("image_url"):
-            image_url = await fetch_official_product_image(source["url"])
+            image_url = await fetch_best_product_image(source)
             if image_url:
                 source["image_url"] = image_url
         if any(index != other_index and source.get("url") == other.get("url") for other_index, other in enumerate(sources)):
