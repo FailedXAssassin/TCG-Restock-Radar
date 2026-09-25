@@ -385,7 +385,7 @@ async function loadAlerts(){
       for(const item of visible){
         const row=document.createElement("a"); row.className=`alert-row ${isFreshDrop(item.created_at)?"fresh-alert":""}`; row.href=item.url||"#"; row.target="_blank"; row.rel="noopener";
         const title=document.createElement("strong"); title.textContent=item.product||"Product update";
-        const detail=document.createElement("span"); const source=item.source==="owner_confirmed"?"🔵 Owner-confirmed direct drop":(statusLabels[item.status]||item.status||"Updated"); detail.textContent=`${item.store||"Retailer"} • ${source}`;
+        const detail=document.createElement("span"); const source=item.source==="owner_confirmed"?"🔵 Owner-confirmed direct drop":(item.source==="authorized_external"?"🟣 Authorized signal: "+(item.signal_label||"approved source"):(statusLabels[item.status]||item.status||"Updated")); detail.textContent=`${item.store||"Retailer"} • ${source}`;
         const time=document.createElement("time"); time.dateTime=item.created_at||""; time.textContent=item.created_at?`Dropped ${formatDropTime(item.created_at)}`:"";
         row.append(title,detail,time); list.appendChild(row);
       }
@@ -469,6 +469,22 @@ async function ownerFetch(path, options={}){
   if(!response.ok){ const data=await response.json().catch(()=>({})); throw new Error(data.detail||`HTTP ${response.status}`); }
   return response.status===204?null:response.json();
 }
+async function loadIntakeSources(){
+  const list=$("#intakeSourceList");
+  if(!list) return;
+  const data=await ownerFetch("/api/admin/intake-sources");
+  list.innerHTML="";
+  for(const item of data.items||[]){
+    const row=document.createElement("div"); row.className="owner-product";
+    const text=document.createElement("span"); const name=document.createElement("strong"); const detail=document.createElement("small");
+    name.textContent=item.label; detail.textContent="Authorized webhook • created "+new Date(item.created_at).toLocaleString();
+    text.append(name,detail);
+    const remove=document.createElement("button"); remove.type="button"; remove.className="secondary"; remove.textContent="Revoke";
+    remove.onclick=async()=>{if(!confirm("Revoke "+item.label+"? This source will no longer be accepted."))return; await ownerFetch("/api/admin/intake-sources/"+item.id,{method:"DELETE"}); await loadIntakeSources();};
+    row.append(text,remove); list.append(row);
+  }
+}
+
 async function loadManagerControls(){
   $("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true; $("#adminOverview").hidden=true;
   try{
@@ -487,7 +503,7 @@ async function loadManagerControls(){
     $("#publishStagedBtn").disabled=!staged;
     $("#stagedCount").textContent=staged ? (staged+" staged item"+(staged===1?"":"s")+" waiting to go live") : "No staged items waiting";
     $("#adminOverview").hidden=false; $("#adminRole").textContent=managerRole==="owner"?"Owner session":"Moderator session"; $("#adminProductCount").textContent=(data.items||[]).length; $("#adminAccess").textContent=managerRole==="owner"?"Full command access":"Product links only";
-    if(managerRole==="owner"){await loadModerators(); await loadHelpInbox(); clearInterval(helpPollTimer); helpPollTimer=setInterval(loadHelpInbox,20000);}
+    if(managerRole==="owner"){await loadModerators(); await loadHelpInbox(); await loadIntakeSources(); clearInterval(helpPollTimer); helpPollTimer=setInterval(loadHelpInbox,20000);}
     $("#ownerMessage").textContent=managerRole==="owner"?"Owner access: messages and moderator controls are available.":"Moderator access: you can add and remove public product URLs.";
   }catch(error){sessionStorage.removeItem(ADMIN_KEY); $("#managerLogin").hidden=false; $("#adminOverview").hidden=true; $("#ownerMessage").textContent=error.message;}
 }
@@ -565,6 +581,18 @@ $("#ownerProductSort").addEventListener("change",()=>renderOwnerProducts(ownerPr
 $("#ownerBtn").addEventListener("click",showOwner);
 $("#closeOwnerBtn").addEventListener("click",()=>$("#ownerDialog").close());
 $("#testPushBtn").addEventListener("click",async()=>{ $("#ownerMessage").textContent="Test scheduled—close TCG Radar completely now."; try{const result=await ownerFetch("/api/admin/push/test",{method:"POST"}); $("#ownerMessage").textContent=result.attempted?"Test scheduled for 10 seconds. Close TCG Radar completely now.":"No phones are subscribed yet—tap Enable Push Alerts on the main screen first.";}catch(error){$("#ownerMessage").textContent=error.message;} });
+$("#intakeSourceForm").addEventListener("submit",async event=>{
+  event.preventDefault();
+  const created=$("#intakeSourceCreated");
+  try{
+    const item=await ownerFetch("/api/admin/intake-sources",{method:"POST",body:JSON.stringify({label:$("#intakeSourceLabel").value})});
+    $("#intakeSourceLabel").value="";
+    created.hidden=false;
+    created.textContent="Webhook: "+location.origin.replace("failedxassassin.github.io","tcg-restock-radar-production.up.railway.app") + item.webhook_url+"\nHeader: X-TCG-Radar-Intake-Key: "+item.secret+"\nSave this key now; it is shown only once.";
+    await loadIntakeSources();
+  }catch(error){$("#ownerMessage").textContent=error.message;}
+});
+
 $("#announcementForm").addEventListener("submit",async event=>{event.preventDefault(); try{const result=await ownerFetch("/api/admin/announcements",{method:"POST",body:JSON.stringify({title:$("#announcementTitle").value,body:$("#announcementBody").value,url:location.href})}); $("#announcementBody").value=""; $("#ownerMessage").textContent=result.attempted?`Message sent to ${result.attempted} subscribed phone(s).`:"No phones are subscribed yet.";}catch(error){$("#ownerMessage").textContent=error.message;}});
 $("#verifiedDropForm").addEventListener("submit",async event=>{event.preventDefault(); try{const result=await ownerFetch("/api/admin/verified-drops",{method:"POST",body:JSON.stringify({product:$("#verifiedDropProduct").value,game:$("#verifiedDropGame").value,store:$("#verifiedDropStore").value,url:$("#verifiedDropUrl").value,price:$("#verifiedDropPrice").value||null,msrp:$("#verifiedDropMsrp").value||null,seller_confirmed:$("#verifiedDropSeller").checked})}); event.target.reset(); $("#ownerMessage").textContent=result.push_attempted?`Owner-confirmed drop posted for ${result.push_attempted} matching phone(s).`:"Owner-confirmed drop posted to Alert History; no subscribed phones matched it yet."; await loadAlerts();}catch(error){$("#ownerMessage").textContent=error.message;}});
 $("#autoPriorityToggle").addEventListener("change",async event=>{
