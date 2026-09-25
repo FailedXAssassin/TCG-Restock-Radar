@@ -368,6 +368,18 @@
     </div>
   </dialog>
 
+  <dialog id="whyAlertDialog" class="confirm-dialog">
+    <div>
+      <div class="eyebrow">ALERT CHECK</div>
+      <h2 id="whyAlertProduct"></h2>
+      <p id="whySeller"></p>
+      <p id="whyChecks"></p>
+      <p id="whyPrice"></p>
+      <p id="whyTime"></p>
+      <div class="dialog-actions"><button id="closeWhyAlert" type="button">Got it</button></div>
+    </div>
+  </dialog>
+
   <dialog id="removeProductDialog" class="confirm-dialog">
     <div>
       <div class="eyebrow">CONFIRM REMOVAL</div>
@@ -397,7 +409,7 @@
           <div><small>MSRP</small><strong class="msrp"></strong></div>
           <div><small>Markup</small><strong class="markup"></strong></div>
         </div>
-        <div class="card-actions"><button class="watch secondary" type="button" aria-label="Add to watchlist">☆</button><a class="buy" target="_blank" rel="noopener">Open listing</a><button class="report secondary" type="button" aria-label="Report wrong status">!</button></div>
+        <div class="card-actions"><button class="watch secondary" type="button" aria-label="Add to watchlist">☆</button><a class="buy" target="_blank" rel="noopener">Open listing</a><button class="why-alert secondary" type="button">Why?</button><button class="mute-item secondary" type="button">Mute item</button><button class="mute-store secondary" type="button">Mute store today</button><button class="report secondary" type="button" aria-label="Report wrong status">!</button></div>
       </div>
       <p class="evidence"></p>
     </article>
