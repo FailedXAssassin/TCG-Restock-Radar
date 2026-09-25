@@ -2638,6 +2638,44 @@ async def add_product(payload: dict, authorization: str = Header(default="")):
     return {**source, "id": source_id(source), "staged": True}
 
 
+@app.post("/api/admin/products/refresh-images")
+async def refresh_missing_product_images(payload: dict, authorization: str = Header(default="")):
+    require_admin(authorization)
+    requested = int(payload.get("limit", 10) or 10)
+    limit = min(10, max(1, requested))
+    sources = _all_sources()
+    refreshed = []
+    checked = 0
+    for source in sources:
+        if checked >= limit:
+            break
+        if str(source.get("image_url", "")).strip():
+            continue
+        checked += 1
+        image_url = await fetch_official_product_image(source.get("url", ""))
+        if image_url:
+            source["image_url"] = image_url
+            refreshed.append({"id": source_id(source), "product": source.get("product", "")})
+        await asyncio.sleep(0.25)
+    if refreshed:
+        _write_sources(sources)
+    remaining = sum(1 for source in sources if not str(source.get("image_url", "")).strip())
+    return {"checked": checked, "refreshed": len(refreshed), "remaining": remaining, "message": f"Found {len(refreshed)} official image(s). {remaining} item(s) still need an image."}
+
+
+@app.post("/api/admin/restart")
+async def restart_server(payload: dict, authorization: str = Header(default="")):
+    require_admin(authorization)
+    staged_count = sum(1 for source in _all_sources() if source.get("published") is False)
+    if staged_count and not bool(payload.get("confirm_staged", False)):
+        return {"restarting": False, "requires_confirmation": True, "staged_count": staged_count}
+    async def stop_process():
+        await asyncio.sleep(1)
+        os._exit(0)
+    asyncio.create_task(stop_process())
+    return {"restarting": True, "staged_count": staged_count, "message": "Restart requested. Railway will bring TCG Radar back online shortly."}
+
+
 @app.post("/api/admin/products/publish")
 async def publish_staged_products(authorization: str = Header(default="")):
     require_admin(authorization)
