@@ -145,6 +145,7 @@ function setMode(mode){
 $("#onlineModeBtn").addEventListener("click",()=>setMode("online"));
 $("#localModeBtn").addEventListener("click",()=>setMode("local"));
 let localSearch=null;
+let localScanSession="";
 function localDirections(store){
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${store.latitude},${store.longitude}`)}`;
 }
@@ -166,8 +167,7 @@ function renderLocalScan(data){
     const side=document.createElement("div"); side.className="drop-side";
     const actions=document.createElement("div"); actions.className="card-actions";
     const directions=document.createElement("a"); directions.className="buy"; directions.target="_blank"; directions.rel="noopener"; directions.href=localDirections(store); directions.textContent="Directions";
-    actions.append(directions); side.append(actions);
-    card.append(main,side);
+    actions.append(directions); side.append(actions); card.append(main,side);
     for(const item of store.items||[]){
       const detail=document.createElement("p"); detail.className="evidence";
       detail.textContent=`${item.product||"Product"} • ${item.status||"Unknown"}${item.price!=null?` • ${money(item.price)}`:""}`;
@@ -176,32 +176,38 @@ function renderLocalScan(data){
     list.append(card);
   }
 }
+function localScanHeaders(){
+  const token=sessionStorage.getItem(ADMIN_KEY);
+  return {"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{})};
+}
 async function runLocalScan(){
   const status=$("#locationStatus");
-  if(!localSearch)return;
+  const zip=localSearch?.zip_code;
+  if(!zip)return;
   const radius=Number($("#radiusFilter").value);
-  status.textContent=`Finding supported stores within ${radius} miles and checking local inventory…`;
+  status.textContent=`Finding supported stores within ${radius} miles of ZIP ${zip} and checking local inventory…`;
   $("#localResults").innerHTML='<div class="status card">Scanning nearby supported stores…</div>';
   try{
-    const response=await fetch(api("/api/local/scan"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({latitude:localSearch.latitude,longitude:localSearch.longitude,radius_miles:radius})});
+    const response=await fetch(api("/api/local/scan"),{method:"POST",headers:localScanHeaders(),body:JSON.stringify({zip_code:zip,radius_miles:radius,client_id:visitorId,scan_session:localScanSession})});
     const data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.detail||`HTTP ${response.status}`);
-    status.textContent=`${data.stores?.length||0} supported store${data.stores?.length===1?"":"s"} found within ${radius} miles. ${data.inventory_scan?.verified_local_inventory||0} have verified automated local inventory.`;
+    localScanSession=data.scan_session||localScanSession;
+    const suffix=data.manager_bypass?"Manager ZIP searches are unlimited.":data.zip_searches_remaining==null?"":` ${data.zip_searches_remaining} ZIP search${data.zip_searches_remaining===1?"":"es"} left in this three-hour window.`;
+    status.textContent=`${data.stores?.length||0} supported store${data.stores?.length===1?"":"s"} found within ${radius} miles.${suffix}`;
     renderLocalScan(data);
   }catch(error){
     status.textContent=`Nearby search unavailable: ${error.message}`;
     $("#localResults").innerHTML='<div class="status card">We could not complete a nearby store scan. Nothing was marked in stock.</div>';
   }
 }
-$("#useLocationBtn").addEventListener("click",()=>{
-  const status=$("#locationStatus");
-  if(!navigator.geolocation){status.textContent="This browser does not support location services.";return;}
-  status.textContent="Requesting your location…";
-  navigator.geolocation.getCurrentPosition(position=>{
-    localSearch={latitude:position.coords.latitude,longitude:position.coords.longitude};
-    runLocalScan();
-  },error=>{status.textContent=error.code===1?"Location permission was denied. You can enable it in Chrome site settings.":"We couldn’t determine your location. Try again.";},{enableHighAccuracy:false,maximumAge:300000,timeout:10000});
+$("#searchZipBtn").addEventListener("click",()=>{
+  const zip=$("#zipFilter").value.trim();
+  if(!/^\d{5}$/.test(zip)){$("#locationStatus").textContent="Enter a five-digit ZIP code.";return;}
+  if(localSearch?.zip_code!==zip)localScanSession="";
+  localSearch={zip_code:zip};
+  runLocalScan();
 });
+$("#zipFilter").addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();$("#searchZipBtn").click();}});
 $("#radiusFilter").addEventListener("change",()=>{if(localSearch)runLocalScan();});
 
 async function loadFeed(){
