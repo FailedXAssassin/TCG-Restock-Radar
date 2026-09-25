@@ -474,6 +474,10 @@ async function loadManagerControls(){
       ? "On — the upcoming trends connector may promote up to 20 matched items. Manual priority controls are locked."
       : "Off — manual High / Normal / Low controls are active below.";
     renderOwnerProducts(data.items||[], managerRole==="owner");
+    const staged=(data.items||[]).filter(item=>item.published===false).length;
+    $("#publishTrackingWrap").hidden=managerRole!=="owner";
+    $("#publishStagedBtn").disabled=!staged;
+    $("#stagedCount").textContent=staged ? (staged+" staged item"+(staged===1?"":"s")+" waiting to go live") : "No staged items waiting";
     $("#adminOverview").hidden=false; $("#adminRole").textContent=managerRole==="owner"?"Owner session":"Moderator session"; $("#adminProductCount").textContent=(data.items||[]).length; $("#adminAccess").textContent=managerRole==="owner"?"Full command access":"Product links only";
     if(managerRole==="owner"){await loadModerators(); await loadHelpInbox(); clearInterval(helpPollTimer); helpPollTimer=setInterval(loadHelpInbox,20000);}
     $("#ownerMessage").textContent=managerRole==="owner"?"Owner access: messages and moderator controls are available.":"Moderator access: you can add and remove public product URLs.";
@@ -508,7 +512,7 @@ function renderOwnerProducts(items,isOwner){
     const el=document.createElement("div"); el.className="owner-product";
     el.innerHTML=`<span><strong></strong><small></small></span><div class="product-actions">${isOwner?'<select class="priority-select" aria-label="Manual priority"><option value="high">High</option><option value="normal">Normal</option><option value="low">Low</option></select><button type="button" class="toggle"></button>':''}<button type="button" class="remove">Remove</button></div>`;
     el.querySelector("strong").textContent=item.product;
-    el.querySelector("small").textContent=`${item.store} • ${item.priority} priority • alert at ≤ ${item.max_markup ?? 80}% markup`;
+    el.querySelector("small").textContent=`${item.store} • ${item.published===false?"staged — not live":"live"} • ${item.priority} priority • alert at ≤ ${item.max_markup ?? 80}% markup`;
     const priority=el.querySelector(".priority-select");
     if(priority){
       priority.value=item.priority||"normal";
@@ -568,7 +572,18 @@ async function loadReports(){try{const data=await ownerFetch("/api/admin/reports
 $("#loadReportsBtn").addEventListener("click",loadReports);
 async function loadModerators(){try{const data=await ownerFetch("/api/admin/moderators"); const list=$("#moderatorList"); list.innerHTML=""; for(const moderator of data.items||[]){const row=document.createElement("div"); row.className="owner-product"; row.innerHTML=`<span><strong></strong><small>Can add and remove tracked URLs only</small></span><button type="button" class="remove">Remove</button>`; row.querySelector("strong").textContent=moderator.name; row.querySelector("button").onclick=async()=>{if(!confirm(`Remove ${moderator.name}'s moderator access?`))return; try{await ownerFetch(`/api/admin/moderators/${moderator.id}`,{method:"DELETE"}); await loadModerators();}catch(error){$("#ownerMessage").textContent=error.message;}}; list.appendChild(row);}}catch(error){$("#ownerMessage").textContent=error.message;}}
 $("#moderatorForm").addEventListener("submit",async event=>{event.preventDefault(); try{const result=await ownerFetch("/api/admin/moderators",{method:"POST",body:JSON.stringify({name:$("#moderatorName").value})}); $("#moderatorName").value=""; await loadModerators(); prompt(`Copy this one-time moderator code for ${result.name}. Send it privately; it will not be shown again. They can use the manager link ending in ?manager=1.`,result.access_code);}catch(error){$("#ownerMessage").textContent=error.message;}});
-$("#productForm").addEventListener("submit",async event=>{event.preventDefault(); $("#ownerMessage").textContent="Saving product…"; try{await ownerFetch("/api/admin/products",{method:"POST",body:JSON.stringify({product:$("#ownerProduct").value,url:$("#ownerUrl").value,game:$("#ownerGame").value,set_name:$("#ownerSet").value,product_type:$("#ownerProductType").value,packs:$("#ownerPacks").value||null,msrp:$("#ownerMsrp").value||null,priority:$("#ownerPriority").value,max_markup:$("#ownerMaxMarkup").value||80,area:"Online"})}); event.target.reset(); await showOwner(); loadFeed();}catch(error){$("#ownerMessage").textContent=error.message;}});
+$("#productForm").addEventListener("submit",async event=>{event.preventDefault(); $("#ownerMessage").textContent="Adding to staged list…"; try{await ownerFetch("/api/admin/products",{method:"POST",body:JSON.stringify({product:$("#ownerProduct").value,url:$("#ownerUrl").value,game:$("#ownerGame").value,set_name:$("#ownerSet").value,product_type:$("#ownerProductType").value,packs:$("#ownerPacks").value||null,msrp:$("#ownerMsrp").value||null,priority:$("#ownerPriority").value,max_markup:$("#ownerMaxMarkup").value||80,area:"Online"})}); event.target.reset(); await loadManagerControls(); $("#ownerMessage").textContent="Added to the staged list. Publish when your batch is ready.";}catch(error){$("#ownerMessage").textContent=error.message;}});
+
+$("#publishStagedBtn").addEventListener("click",async()=>{
+  if(!confirm("Publish all staged products to live monitoring?")) return;
+  $("#ownerMessage").textContent="Publishing tracking changes…";
+  try{
+    const result=await ownerFetch("/api/admin/products/publish",{method:"POST"});
+    $("#ownerMessage").textContent=result.message;
+    await loadManagerControls();
+    loadFeed();
+  }catch(error){$("#ownerMessage").textContent=error.message;}
+});
 
 const PERSONAL_MARKUP_KEY="tcg-radar-personal-markup";
 const ALERT_GAMES_KEY="tcg-radar-alert-games";
