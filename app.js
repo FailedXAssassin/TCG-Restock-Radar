@@ -101,20 +101,22 @@ function recordRetailerLinkClick(item){
   if(!item?.store||!item?.url) return;
   fetch(api("/api/analytics/link-click"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({retailer:item.store}),keepalive:true}).catch(()=>{});
 }
+let actionToastTimer=null;
+function showActionToast(message){const toast=$("#actionToast");toast.textContent=message;toast.hidden=false;clearTimeout(actionToastTimer);actionToastTimer=setTimeout(()=>{toast.hidden=true;},2800);}
 async function syncMutePreferences(){
   try{const registration=await navigator.serviceWorker.ready;const subscription=await registration.pushManager.getSubscription();if(subscription)await savePushSubscription(subscription);}catch(_){}
 }
 function toggleProductMute(productKey,productName){
   const muted=mutedProducts(); muted.has(productKey)?muted.delete(productKey):muted.add(productKey);
   localStorage.setItem(MUTED_PRODUCTS_KEY,JSON.stringify([...muted])); syncMutePreferences(); render();
-  $("#toastMessage").textContent=muted.has(productKey)?`${productName} muted for future alerts.`:`${productName} alerts restored.`;
+  showActionToast(muted.has(productKey)?`${productName} muted for future alerts.`:`${productName} alerts restored.`);
 }
 function toggleStoreMute(store){
   const muted=mutedStoresUntil();
   if(Number(muted[store]||0)>Date.now())delete muted[store];
   else {const tomorrow=new Date();tomorrow.setHours(24,0,0,0);muted[store]=tomorrow.getTime();}
   localStorage.setItem(MUTED_STORES_KEY,JSON.stringify(muted)); syncMutePreferences(); render();
-  $("#toastMessage").textContent=muted[store]?`${store} alerts muted until tomorrow.`:`${store} alerts restored.`;
+  showActionToast(muted[store]?`${store} alerts muted until tomorrow.`:`${store} alerts restored.`);
 }
 function showWhyAlert(item){
   $("#whyAlertProduct").textContent=item.product||"This item";
