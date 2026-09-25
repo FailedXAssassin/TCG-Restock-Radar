@@ -26,6 +26,7 @@ DATA_DIR = Path(os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", ROOT))
 SOURCES_FILE = Path(os.environ.get("TCG_RADAR_DATA_PATH", DATA_DIR / "sources.json"))
 PUSH_SUBSCRIPTIONS_FILE = Path(os.environ.get("TCG_RADAR_PUSH_SUBSCRIPTIONS_PATH", DATA_DIR / "push_subscriptions.json"))
 MODERATORS_FILE = Path(os.environ.get("TCG_RADAR_MODERATORS_PATH", DATA_DIR / "moderators.json"))
+MODERATOR_INVITES_FILE = Path(os.environ.get("TCG_RADAR_MODERATOR_INVITES_PATH", DATA_DIR / "moderator_invites.json"))
 OWNER_PIN_FILE = Path(os.environ.get("TCG_RADAR_OWNER_PIN_PATH", DATA_DIR / "owner_pin.json"))
 ALERT_HISTORY_FILE = Path(os.environ.get("TCG_RADAR_ALERT_HISTORY_PATH", DATA_DIR / "alert_history.json"))
 AUTHORIZED_INTAKE_FILE = Path(os.environ.get("TCG_RADAR_AUTHORIZED_INTAKE_PATH", DATA_DIR / "authorized_intake_sources.json"))
@@ -835,6 +836,9 @@ def _nickname_taken(nickname, exclude_google_sub="", exclude_moderator_id=""):
     for moderator in _moderators():
         if moderator.get("id") != exclude_moderator_id and str(moderator.get("name", "")).casefold() == folded:
             return True
+    for invite in _moderator_invites():
+        if _invite_is_active(invite) and str(invite.get("nickname", "")).casefold() == folded:
+            return True
     if database_enabled():
         with _database_connection() as connection:
             with connection.cursor() as cursor:
@@ -904,6 +908,63 @@ def _write_moderators(moderators):
     temporary = MODERATORS_FILE.with_suffix(".tmp")
     temporary.write_text(json.dumps(moderators, indent=2) + "\n", encoding="utf-8")
     temporary.replace(MODERATORS_FILE)
+
+
+def _parse_invite_time(value):
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _invite_is_active(invite):
+    expires_at = _parse_invite_time(invite.get("expires_at"))
+    return bool(
+        invite
+        and not invite.get("revoked_at")
+        and not invite.get("used_at")
+        and expires_at
+        and expires_at > datetime.now(timezone.utc)
+    )
+
+
+def _moderator_invites():
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT payload FROM radar_settings WHERE key = %s", ("moderator_invites",))
+                row = cursor.fetchone()
+        payload = row[0] if row else {}
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except json.JSONDecodeError:
+                payload = {}
+        return list((payload or {}).get("items", []))
+    if not MODERATOR_INVITES_FILE.exists():
+        return []
+    try:
+        payload = json.loads(MODERATOR_INVITES_FILE.read_text(encoding="utf-8"))
+        return list((payload or {}).get("items", []))
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _write_moderator_invites(invites):
+    payload = {"items": invites, "updated_at": now_iso()}
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO radar_settings (key, payload) VALUES (%s, %s::jsonb) "
+                    "ON CONFLICT (key) DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()",
+                    ("moderator_invites", json.dumps(payload)),
+                )
+            connection.commit()
+        return
+    temporary = MODERATOR_INVITES_FILE.with_suffix(".tmp")
+    temporary.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(MODERATOR_INVITES_FILE)
 
 
 def manager_role(authorization=Header(default="")):
@@ -2880,7 +2941,93 @@ async def list_moderators(authorization: str = Header(default="")):
     return {
         "owner_nickname": _owner_nickname(),
         "items": [{"id": moderator["id"], "nickname": moderator["name"], "created_at": moderator.get("created_at")} for moderator in _moderators()],
+        "pending_invites": [
+            {
+                "id": invite["id"],
+                "nickname": invite["nickname"],
+                "created_at": invite.get("created_at"),
+                "expires_at": invite.get("expires_at"),
+            }
+            for invite in _moderator_invites() if _invite_is_active(invite)
+        ],
     }
+
+
+@app.post("/api/admin/moderator-invites", status_code=201)
+async def create_moderator_invite(payload: dict, authorization: str = Header(default="")):
+    require_admin(authorization)
+    nickname = _nickname(payload.get("nickname", ""))
+    if _nickname_taken(nickname):
+        raise HTTPException(status_code=409, detail="That nickname is already taken")
+    temporary_pin = str(payload.get("temporary_pin", "")).strip()
+    if not PIN_PATTERN.fullmatch(temporary_pin):
+        raise HTTPException(status_code=422, detail="Temporary PIN must be 4 to 20 numbers")
+    token = secrets.token_urlsafe(32)
+    created_at = datetime.now(timezone.utc)
+    invite = {
+        "id": secrets.token_urlsafe(8),
+        "nickname": nickname,
+        "token_hash": _token_hash(token),
+        "temporary_pin_hash": _token_hash(temporary_pin),
+        "created_at": created_at.isoformat(),
+        "expires_at": (created_at + timedelta(minutes=10)).isoformat(),
+    }
+    invites = _moderator_invites()
+    invites.append(invite)
+    _write_moderator_invites(invites)
+    return {"id": invite["id"], "nickname": nickname, "token": token, "expires_at": invite["expires_at"]}
+
+
+@app.delete("/api/admin/moderator-invites/{invite_id}", status_code=204)
+async def revoke_moderator_invite(invite_id: str, authorization: str = Header(default="")):
+    require_admin(authorization)
+    invites = _moderator_invites()
+    kept = [invite for invite in invites if invite.get("id") != invite_id]
+    if len(kept) == len(invites):
+        raise HTTPException(status_code=404, detail="Moderator invite was not found")
+    _write_moderator_invites(kept)
+
+
+@app.get("/api/moderator-invites/{token}")
+async def inspect_moderator_invite(token: str):
+    token_hash = _token_hash(token)
+    for invite in _moderator_invites():
+        if secrets.compare_digest(token_hash, str(invite.get("token_hash", ""))):
+            if not _invite_is_active(invite):
+                raise HTTPException(status_code=410, detail="This moderator invite has expired or was revoked")
+            return {"nickname": invite["nickname"], "expires_at": invite["expires_at"]}
+    raise HTTPException(status_code=404, detail="This moderator invite is not valid")
+
+
+@app.post("/api/moderator-invites/redeem")
+async def redeem_moderator_invite(payload: dict):
+    token = str(payload.get("token", "")).strip()
+    current_pin = str(payload.get("current_pin", "")).strip()
+    new_pin = str(payload.get("new_pin", "")).strip()
+    confirm_pin = str(payload.get("confirm_pin", "")).strip()
+    if not PIN_PATTERN.fullmatch(current_pin):
+        raise HTTPException(status_code=422, detail="Enter the temporary 4–20 digit PIN")
+    if not PIN_PATTERN.fullmatch(new_pin):
+        raise HTTPException(status_code=422, detail="New PIN must be 4 to 20 numbers")
+    if new_pin != confirm_pin:
+        raise HTTPException(status_code=422, detail="New PIN entries do not match")
+    token_hash = _token_hash(token)
+    invites = _moderator_invites()
+    for invite in invites:
+        if not secrets.compare_digest(token_hash, str(invite.get("token_hash", ""))):
+            continue
+        if not _invite_is_active(invite):
+            raise HTTPException(status_code=410, detail="This moderator invite has expired or was revoked")
+        if not secrets.compare_digest(_token_hash(current_pin), str(invite.get("temporary_pin_hash", ""))):
+            raise HTTPException(status_code=401, detail="Incorrect temporary PIN")
+        moderator = {"id": secrets.token_urlsafe(8), "name": invite["nickname"], "secret_hash": _token_hash(new_pin)}
+        moderators = _moderators()
+        moderators.append(moderator)
+        _write_moderators(moderators)
+        invite["used_at"] = now_iso()
+        _write_moderator_invites(invites)
+        return {"moderator_id": moderator["id"], "nickname": moderator["name"]}
+    raise HTTPException(status_code=404, detail="This moderator invite is not valid")
 
 
 @app.put("/api/profile/nickname")
