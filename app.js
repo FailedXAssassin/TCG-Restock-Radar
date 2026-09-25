@@ -603,7 +603,7 @@ async function loadManagerControls(){
 }
 function showOwner(){
   const managerLink=new URLSearchParams(location.search).has("manager");
-  if(!hasManagerAccess()&&!managerLink) return;
+  if((accountUser&&!accountUser.is_owner&&!managerSecret())||(!hasManagerAccess()&&!managerLink)) return;
   $("#ownerDialog").showModal(); $("#managerLogin").hidden=false; $("#ownerPinQuick").hidden=true; $("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true; $("#managerCode").value=""; $("#ownerMessage").textContent="Enter a PIN to unlock these controls.";
   if(hasManagerAccess()) loadManagerControls();
 }
