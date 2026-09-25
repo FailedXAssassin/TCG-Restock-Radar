@@ -550,6 +550,20 @@ function hasManagerAccess(){return Boolean(accountUser?.is_owner||managerSecret(
 function applyManagerVisibility(){const tracker=$("#activeTrackerSnapshot");if(tracker)tracker.hidden=!hasManagerAccess();$("#healthSection").hidden=!hasManagerAccess()||activePage!=="radar";}
 function showPinFeedback(title,text){$("#pinFeedbackTitle").textContent=title;$("#pinFeedbackText").textContent=text;$("#pinFeedbackDialog").showModal();}
 $("#closePinFeedbackBtn").addEventListener("click",()=>$("#pinFeedbackDialog").close());
+async function refreshMissingImages(){
+  const message=$("#maintenanceMessage");message.textContent="Checking up to 10 official retailer pages for missing images…";
+  try{const result=await ownerFetch("/api/admin/products/refresh-images",{method:"POST",body:JSON.stringify({limit:10})});message.textContent=result.message;await loadManagerControls();}catch(error){message.textContent=error.message;}
+}
+async function requestServerRestart(confirmStaged=false){
+  try{const result=await ownerFetch("/api/admin/restart",{method:"POST",body:JSON.stringify({confirm_staged:confirmStaged})});
+    if(result.requires_confirmation){$("#restartWarningText").textContent=result.staged_count+" staged product"+(result.staged_count===1?" is":"s are")+" waiting to be published. Restarting will not publish them, and any unfinished work could be lost.";$("#restartWarningDialog").showModal();return;}
+    $("#maintenanceMessage").textContent=result.message;showPinFeedback("Restart requested","Railway is restarting the server. Give it about a minute, then refresh the app.");
+  }catch(error){$("#maintenanceMessage").textContent=error.message;}
+}
+$("#refreshImagesBtn").addEventListener("click",refreshMissingImages);
+$("#restartServerBtn").addEventListener("click",()=>requestServerRestart(false));
+$("#cancelRestartBtn").addEventListener("click",()=>$("#restartWarningDialog").close());
+$("#confirmRestartBtn").addEventListener("click",()=>{$("#restartWarningDialog").close();requestServerRestart(true);});
 let priorityAutomation={auto_high_priority:false,top_limit:20,trend_source:"not_configured",auto_selected_product_ids:[]};
 let helpPollTimer=null, lastHelpMessageId="";
 function updateManagerButton(){ $("#ownerBtn").hidden=!hasManagerAccess(); applyManagerVisibility(); }
