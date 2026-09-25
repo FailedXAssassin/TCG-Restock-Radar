@@ -271,6 +271,7 @@ def ensure_database():
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_users (google_sub TEXT PRIMARY KEY, email TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_purchases (id TEXT PRIMARY KEY, google_sub TEXT NOT NULL, payload JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_visitors (client_id TEXT PRIMARY KEY, first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(), last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cursor.execute("CREATE TABLE IF NOT EXISTS radar_retailer_link_clicks (retailer TEXT PRIMARY KEY, clicks BIGINT NOT NULL DEFAULT 0, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_local_zip_searches (id TEXT PRIMARY KEY, client_id TEXT NOT NULL, searched_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_local_zip_sessions (id TEXT PRIMARY KEY, client_id TEXT NOT NULL, zip_hash TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL)")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_local_scan_cooldowns (client_id TEXT PRIMARY KEY, last_scanned TIMESTAMPTZ NOT NULL DEFAULT NOW())")
@@ -2023,7 +2024,23 @@ async def admin_usage(authorization: str = Header(default="")):
             cursor.execute("SELECT COUNT(*) FROM radar_users"); accounts = cursor.fetchone()[0]
             cursor.execute("SELECT COUNT(*) FROM push_subscriptions"); push = cursor.fetchone()[0]
             cursor.execute("SELECT COUNT(DISTINCT client_id) FROM radar_support_messages"); help_users = cursor.fetchone()[0]
-    return {"anonymous_devices": anonymous, "google_accounts": accounts, "push_devices": push, "help_devices": help_users}
+    with _database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT retailer, clicks FROM radar_retailer_link_clicks ORDER BY clicks DESC, retailer")
+            link_clicks = [{"retailer": row[0], "clicks": row[1]} for row in cursor.fetchall()]
+    return {"anonymous_devices": anonymous, "google_accounts": accounts, "push_devices": push, "help_devices": help_users, "link_clicks": link_clicks, "link_click_total": sum(item["clicks"] for item in link_clicks)}
+
+
+@app.post("/api/analytics/link-click")
+async def record_retailer_link_click(payload: dict):
+    retailer = str(payload.get("retailer", "")).strip()[:80]
+    if not retailer or not database_enabled():
+        return {"counted": False}
+    with _database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("INSERT INTO radar_retailer_link_clicks (retailer, clicks) VALUES (%s, 1) ON CONFLICT (retailer) DO UPDATE SET clicks = radar_retailer_link_clicks.clicks + 1, updated_at = NOW()", (retailer,))
+        connection.commit()
+    return {"counted": True}
 
 
 @app.get("/api/admin/help")
