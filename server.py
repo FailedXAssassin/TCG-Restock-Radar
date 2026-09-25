@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import math
 import html
 import json
 import os
@@ -35,6 +36,16 @@ OWNER_EMAIL = os.environ.get("TCG_RADAR_OWNER_EMAIL", "").strip().lower()
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 BEST_BUY_DISCOVERY_ENABLED = os.environ.get("TCG_RADAR_BEST_BUY_DISCOVERY_ENABLED", "").strip().lower() in {"1", "true", "yes"}
 DISCOVERY_INTERVAL_SECONDS = max(3600, int(os.environ.get("TCG_RADAR_DISCOVERY_INTERVAL_SECONDS", "21600")))
+LOCAL_STORE_SEARCH_URL = "https://overpass-api.de/api/interpreter"
+LOCAL_SUPPORTED_RETAILERS = {
+    "walmart": "Walmart",
+    "target": "Target",
+    "best buy": "Best Buy",
+    "cvs": "CVS",
+    "walgreens": "Walgreens",
+    "gamestop": "GameStop",
+    "barnes & noble": "Barnes & Noble",
+}
 BEST_BUY_DISCOVERY_URLS = (
     "https://www.bestbuy.com/site/searchpage.jsp?id=pcat17071&st=pokemon+tcg",
     "https://www.bestbuy.com/site/searchpage.jsp?id=pcat17071&st=magic+the+gathering",
@@ -1455,7 +1466,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="TCG Radar API",
-    version="3.5.3",
+    version="3.5.4",
     lifespan=lifespan,
 )
 
@@ -1475,7 +1486,7 @@ app.add_middleware(
 async def root():
     return {
         "name": "TCG Radar",
-        "version": "3.5.3",
+        "version": "3.5.4",
         "status": "online",
         "message": "TCG Radar backend is running.",
     }
@@ -1487,7 +1498,7 @@ async def health():
 
     return {
         "status": "online",
-        "version": "3.5.3",
+        "version": "3.5.4",
         "time": now_iso(),
         "configured_products": len(
             sources
@@ -1500,6 +1511,91 @@ async def health():
         ),
         "persistent_storage": "postgres" if database_enabled() else ("volume" if "RAILWAY_VOLUME_MOUNT_PATH" in os.environ else "ephemeral"),
         "adapter_capabilities": adapter_capabilities(),
+    }
+
+
+def _local_retailer(name):
+    normalized = str(name or "").strip().lower()
+    for needle, retailer in LOCAL_SUPPORTED_RETAILERS.items():
+        if needle in normalized:
+            return retailer
+    return None
+
+
+def _distance_miles(latitude_a, longitude_a, latitude_b, longitude_b):
+    radius_miles = 3958.7613
+    lat_a, lon_a, lat_b, lon_b = map(math.radians, (latitude_a, longitude_a, latitude_b, longitude_b))
+    delta_lat, delta_lon = lat_b - lat_a, lon_b - lon_a
+    value = math.sin(delta_lat / 2) ** 2 + math.cos(lat_a) * math.cos(lat_b) * math.sin(delta_lon / 2) ** 2
+    return radius_miles * 2 * math.asin(min(1, math.sqrt(value)))
+
+
+@app.post("/api/local/scan")
+async def local_scan(payload: dict):
+    # Coordinates are used for this request only. They are not written to the
+    # database, logs, product records, or notification preferences.
+    latitude = safe_float(payload.get("latitude"))
+    longitude = safe_float(payload.get("longitude"))
+    radius_miles = safe_float(payload.get("radius_miles"))
+    if latitude is None or longitude is None or radius_miles not in {5.0, 10.0, 20.0, 50.0}:
+        raise HTTPException(status_code=422, detail="Use a valid location and a 5, 10, 20, or 50 mile radius")
+    if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+        raise HTTPException(status_code=422, detail="Location coordinates are out of range")
+    if http_client is None:
+        raise HTTPException(status_code=503, detail="Local Radar is starting; try again shortly")
+
+    radius_meters = int(radius_miles * 1609.344)
+    query = f"""[out:json][timeout:12];
+(
+  nwr["name"~"Walmart|Target|Best Buy|CVS|Walgreens|GameStop|Barnes & Noble",i](around:{radius_meters},{latitude},{longitude});
+);
+out center tags;"""
+    try:
+        response = await http_client.post(LOCAL_STORE_SEARCH_URL, data={"data": query}, timeout=18)
+        response.raise_for_status()
+        elements = response.json().get("elements", [])
+    except (httpx.HTTPError, ValueError):
+        raise HTTPException(status_code=503, detail="Store discovery is temporarily unavailable; please try again")
+
+    stores, seen = [], set()
+    for element in elements:
+        tags = element.get("tags") or {}
+        name = str(tags.get("name") or "").strip()
+        retailer = _local_retailer(name)
+        point = element.get("center") or element
+        store_lat, store_lon = safe_float(point.get("lat")), safe_float(point.get("lon"))
+        if not retailer or store_lat is None or store_lon is None:
+            continue
+        distance = _distance_miles(latitude, longitude, store_lat, store_lon)
+        if distance > radius_miles + 0.1:
+            continue
+        key = f"{retailer}:{round(store_lat, 5)}:{round(store_lon, 5)}"
+        if key in seen:
+            continue
+        seen.add(key)
+        address = " ".join(str(tags.get(key, "")).strip() for key in ("addr:housenumber", "addr:street") if tags.get(key)).strip()
+        if tags.get("addr:city"):
+            address = f"{address}, {tags['addr:city']}".strip(", ")
+        stores.append({
+            "id": key,
+            "retailer": retailer,
+            "name": name,
+            "address": address or None,
+            "latitude": store_lat,
+            "longitude": store_lon,
+            "distance_miles": round(distance, 1),
+            "inventory_status": "unknown",
+            "inventory_source": "automated",
+            "inventory_note": "Store found. Automated store-specific inventory is not supported for this retailer yet.",
+            "items": [],
+            "checked_at": now_iso(),
+        })
+    stores.sort(key=lambda store: (store["distance_miles"], store["name"].lower()))
+    return {
+        "generated_at": now_iso(),
+        "radius_miles": int(radius_miles),
+        "stores": stores[:80],
+        "inventory_scan": {"attempted": len(stores[:80]), "verified_local_inventory": 0},
     }
 
 
