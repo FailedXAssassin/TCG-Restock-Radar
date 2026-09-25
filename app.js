@@ -146,6 +146,8 @@ $("#onlineModeBtn").addEventListener("click",()=>setMode("online"));
 $("#localModeBtn").addEventListener("click",()=>setMode("local"));
 let localSearch=null;
 let localScanSession="";
+let localCooldownUntil=0;
+let localCooldownTimer=null;
 function localDirections(store){
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${store.latitude},${store.longitude}`)}`;
 }
@@ -180,10 +182,27 @@ function localScanHeaders(){
   const token=sessionStorage.getItem(ADMIN_KEY);
   return {"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{})};
 }
+function localCooldownActive(){return Date.now()<localCooldownUntil;}
+function startLocalCooldown(){
+  localCooldownUntil=Date.now()+30000;
+  const button=$("#searchZipBtn");
+  clearInterval(localCooldownTimer);
+  const update=()=>{
+    const seconds=Math.max(0,Math.ceil((localCooldownUntil-Date.now())/1000));
+    button.disabled=seconds>0;
+    button.textContent=seconds>0?`Refresh in ${seconds}s`:"Scan this ZIP";
+    if(!seconds)clearInterval(localCooldownTimer);
+  };
+  update();
+  localCooldownTimer=setInterval(update,250);
+}
+
 async function runLocalScan(){
   const status=$("#locationStatus");
   const zip=localSearch?.zip_code;
   if(!zip)return;
+  if(localCooldownActive()){ $("#locationStatus").textContent=`Refresh available in ${Math.ceil((localCooldownUntil-Date.now())/1000)} seconds.`; return; }
+  startLocalCooldown();
   const radius=Number($("#radiusFilter").value);
   status.textContent=`Finding supported stores within ${radius} miles of ZIP ${zip} and checking local inventory…`;
   $("#localResults").innerHTML='<div class="status card">Scanning nearby supported stores…</div>';
@@ -208,7 +227,7 @@ $("#searchZipBtn").addEventListener("click",()=>{
   runLocalScan();
 });
 $("#zipFilter").addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();$("#searchZipBtn").click();}});
-$("#radiusFilter").addEventListener("change",()=>{if(localSearch)runLocalScan();});
+$("#radiusFilter").addEventListener("change",()=>{if(!localSearch)return;if(localCooldownActive()){$("#locationStatus").textContent=`Radius updated. Refresh available in \${Math.ceil((localCooldownUntil-Date.now())/1000)} seconds.`;return;}runLocalScan();});
 
 async function loadFeed(){
   $("#statusBox").textContent="Checking latest feed…";
