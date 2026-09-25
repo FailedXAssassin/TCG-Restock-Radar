@@ -407,12 +407,16 @@
 
   <dialog id="whyAlertDialog" class="confirm-dialog">
     <div>
-      <div class="eyebrow">ALERT CHECK</div>
+      <div class="eyebrow">ALERT RECEIPT</div>
       <h2 id="whyAlertProduct"></h2>
-      <p id="whySeller"></p>
-      <p id="whyChecks"></p>
-      <p id="whyPrice"></p>
-      <p id="whyTime"></p>
+      <p class="alert-receipt-intro">Here is the exact check that made this listing alert-eligible.</p>
+      <div class="alert-receipt">
+        <p id="whySeller"></p>
+        <p id="whyChecks"></p>
+        <p id="whyPreference"></p>
+        <p id="whyPrice"></p>
+        <p id="whyTime"></p>
+      </div>
       <div class="dialog-actions"><button id="closeWhyAlert" type="button">Got it</button></div>
     </div>
   </dialog>
