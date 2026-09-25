@@ -158,3 +158,8 @@ body:before{right:50%;bottom:12vh;transform:translateX(50%);width:min(82vw,460px
 
 /* Owner priority controls */
 .priority-automation{padding:0 14px 14px}.priority-automation .choice-label{font-weight:850}.priority-automation .muted{margin:8px 0 0}.priority-select{min-width:82px;padding:7px 24px 7px 8px;font-size:.78rem;font-weight:800}.priority-select:disabled{opacity:.52;cursor:not-allowed}
+
+
+.publish-tracking{display:grid;gap:8px;margin:12px 0;padding:12px;border:1px solid rgba(45,222,210,.35);border-radius:14px;background:rgba(13,43,50,.42)}
+.publish-tracking small{color:var(--muted,#a9b7c7)}
+.publish-tracking button:disabled{opacity:.55;cursor:not-allowed}
