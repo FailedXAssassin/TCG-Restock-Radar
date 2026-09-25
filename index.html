@@ -113,7 +113,7 @@
         <input id="searchInput" placeholder="ETB, booster, collector..." />
       </div>
     </section>
-      <div class="filter-actions"><button id="cancelFiltersBtn" type="button" class="secondary">Cancel</button><button id="applyFiltersBtn" type="button">Apply filters</button></div>
+      <div class="filter-actions"><button id="cancelFiltersBtn" type="button" class="secondary">Cancel</button><button id="saveFiltersBtn" type="button" class="secondary">Save as my filters</button><button id="applyFiltersBtn" type="button">Apply filters</button></div><button id="resetSavedFiltersBtn" type="button" class="filter-reset">Reset saved filters</button>
     </details>
 
     <section data-page="radar" class="summary">
@@ -136,6 +136,7 @@
       <button id="accountQuickBtn" class="account-quick"><span><strong id="accountQuickTitle">Sign in</strong><small id="accountQuickDetail">Use Google to save purchases</small></span><b>›</b></button>
       <button id="watchlistBtn" class="secondary">☆ <span>My watchlist</span></button>
       <button id="settingsBtn">⚙ <span>Settings</span></button>
+      <button id="backupBtn" class="secondary">⇩ <span>Backup my setup</span></button>
       <button id="refreshBtn" class="secondary">↻ <span>Refresh feed</span></button>
       <button id="ownerBtn" class="secondary" hidden>Manage Products</button>
     </section>
@@ -404,7 +405,7 @@
         <div class="status-row"><span class="badge product-status"></span><span class="seller"></span></div>
         <p class="store"></p>
         <p class="checked"></p>
-        <p class="stock-estimate" hidden></p>
+        <p class="stock-estimate" hidden></p><p class="personal-note" hidden></p>
       </div>
       <div class="drop-side">
         <div class="price-row">
@@ -412,12 +413,14 @@
           <div><small>MSRP</small><strong class="msrp"></strong></div>
           <div><small>Markup</small><strong class="markup"></strong></div>
         </div>
-        <div class="card-actions"><button class="watch secondary" type="button" aria-label="Add to watchlist">☆</button><a class="buy" target="_blank" rel="noopener">Open listing</a><button class="why-alert secondary" type="button">Why?</button><button class="mute-item secondary" type="button">Mute item</button><button class="mute-store secondary" type="button">Mute store today</button><button class="report secondary" type="button" aria-label="Report wrong status">!</button></div>
+        <div class="card-actions"><button class="watch secondary" type="button" aria-label="Add to watchlist">☆</button><a class="buy" target="_blank" rel="noopener">Open listing</a><button class="why-alert secondary" type="button">Why?</button><button class="drop-note secondary" type="button">Note</button><button class="mute-item secondary" type="button">Mute item</button><button class="mute-store secondary" type="button">Mute store today</button><button class="report secondary" type="button" aria-label="Report wrong status">!</button></div>
       </div>
       <p class="evidence"></p>
     </article>
   </template>
 
+  <dialog id="dropNoteDialog"><form method="dialog" class="dialog-card" id="dropNoteForm"><div class="dialog-title"><h2>Add a private note</h2><button value="cancel" class="secondary">Close</button></div><p id="dropNoteProduct" class="muted"></p><textarea id="dropNoteText" maxlength="500" rows="4" placeholder="Example: Wait for a better price, already bought one, check Friday…"></textarea><div class="dialog-actions"><button id="removeDropNoteBtn" type="button" class="secondary">Remove note</button><button value="default">Save note</button></div></form></dialog>
+  <dialog id="backupDialog"><div class="dialog-card"><div class="dialog-title"><h2>Backup my setup</h2><button id="closeBackupBtn" type="button" class="secondary">Close</button></div><p class="muted">Back up your watchlist, saved filters, private notes, alert choices, and quiet hours. PINs, Google sign-in, purchases, and manager data stay private and are not included.</p><div class="dialog-actions"><button id="downloadJsonBtn" type="button">Download JSON backup</button><button id="downloadCsvBtn" type="button" class="secondary">Download watchlist CSV</button></div><label class="backup-import">Restore a JSON backup<input id="restoreBackupFile" type="file" accept="application/json,.json" /></label><p id="backupMessage" class="muted"></p></div></dialog>
   <div id="actionToast" class="action-toast" role="status" hidden></div>
 
   <nav class="bottom-nav" aria-label="Primary navigation">
