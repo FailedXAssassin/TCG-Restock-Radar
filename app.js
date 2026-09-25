@@ -21,6 +21,9 @@ let deferredPrompt = null;
 let viewMode = "online";
 let activePage = "radar";
 let healthAllowed = false;
+let canManageFeed = false;
+let ownerProductItems = [];
+let ownerCanEditProducts = false;
 let reportProductId = "";
 let initialFeedRendered = false;
 const SEEN_ALERTS_KEY = "tcg-radar-seen-alerts";
@@ -325,17 +328,22 @@ $("#radiusFilter").addEventListener("change",()=>{if(!localSearch)return;if(loca
 async function loadFeed(){
   $("#statusBox").textContent="Checking latest feed…";
   try{
-    const res=await fetch(`${API_BASE}api/feed?t=${Date.now()}`,{cache:"no-store"});
+    const managerToken=sessionStorage.getItem("tcg-radar-manager-secret");
+    const res=await fetch(`${API_BASE}api/feed?t=${Date.now()}`,{cache:"no-store",headers:managerToken?{Authorization:`Bearer ${managerToken}`}:{}});
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data=await res.json();
     rows=Array.isArray(data)?data:(data.items||[]);
+    canManageFeed=Boolean(data.can_manage_feed);
+    $("#activeTrackerSnapshot").hidden=!canManageFeed;
     const retailers=[...new Set(rows.map(x=>x.store).filter(Boolean))].sort();
     const current=$("#retailerFilter").value;
     $("#retailerFilter").innerHTML='<option value="all">All retailers</option>'+retailers.map(x=>`<option>${x}</option>`).join("");
     if(retailers.includes(current)) $("#retailerFilter").value=current;
     const stamp=data.generated_at ? new Date(data.generated_at).toLocaleString() : new Date().toLocaleTimeString();
     $("#updatedAt").textContent=stamp;
-    $("#statusBox").textContent=`Live Railway feed: ${rows.length} tracked product${rows.length===1?"":"s"}. High-priority checks are staggered around 30–60 seconds.`;
+    $("#statusBox").textContent=canManageFeed
+      ? `Live Railway feed: ${rows.length} tracked product${rows.length===1?"":"s"}. High-priority checks are staggered around 30–60 seconds.`
+      : `${rows.length} live drop${rows.length===1?"":"s"} in the last 30 minutes.`;
   }catch(err){
     rows=[];
     $("#updatedAt").textContent="—";
@@ -466,7 +474,7 @@ async function loadManagerControls(){
   try{
     const [data,settings]=await Promise.all([ownerFetch("/api/admin/products"),ownerFetch("/api/admin/priority-automation")]);
     priorityAutomation=settings||priorityAutomation;
-    managerRole=data.role||""; healthAllowed=true; $("#healthSection").hidden=activePage!=="radar"; loadHealth(); localStorage.setItem(MANAGER_MODE_KEY,"1"); updateManagerButton(); $("#managerLogin").hidden=true; $("#productForm").hidden=false; $("#ownerOnlyControls").hidden=managerRole!=="owner";
+    managerRole=data.role||""; healthAllowed=true; $("#healthSection").hidden=activePage!=="radar"; loadHealth(); loadFeed(); localStorage.setItem(MANAGER_MODE_KEY,"1"); updateManagerButton(); $("#managerLogin").hidden=true; $("#productForm").hidden=false; $("#ownerOnlyControls").hidden=managerRole!=="owner";
     const autoToggle=$("#autoPriorityToggle"), autoState=$("#autoPriorityState");
     autoToggle.checked=Boolean(priorityAutomation.auto_high_priority);
     autoToggle.disabled=managerRole!=="owner";
@@ -489,7 +497,7 @@ function showOwner(){
 }
 $("#cancelManager").addEventListener("click",()=>{ $("#ownerDialog").close(); });
 $("#unlockManager").addEventListener("click",async()=>{const code=$("#managerCode").value.trim(); if(!code){$("#ownerMessage").textContent="Enter a manager code first."; return;} sessionStorage.setItem(ADMIN_KEY,code); $("#ownerMessage").textContent="Checking code…"; await loadManagerControls();});
-$("#lockManagerBtn").addEventListener("click",()=>{clearInterval(helpPollTimer); sessionStorage.removeItem(ADMIN_KEY); localStorage.removeItem(MANAGER_MODE_KEY); managerRole=""; healthAllowed=false; $("#healthSection").hidden=true; updateManagerButton(); $("#managerLogin").hidden=false; $("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true; $("#managerCode").value=""; $("#ownerMessage").textContent="Manager controls locked.";});
+$("#lockManagerBtn").addEventListener("click",()=>{clearInterval(helpPollTimer); sessionStorage.removeItem(ADMIN_KEY); localStorage.removeItem(MANAGER_MODE_KEY); managerRole=""; healthAllowed=false; loadFeed(); $("#healthSection").hidden=true; updateManagerButton(); $("#managerLogin").hidden=false; $("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true; $("#managerCode").value=""; $("#ownerMessage").textContent="Manager controls locked.";});
 async function loadHelpInbox(){
   try{const items=(await ownerFetch("/api/admin/help")).items||[]; const list=$("#ownerHelp"); list.innerHTML=""; if(!items.length){list.innerHTML="<small>No help messages yet.</small>";return;} const threads=new Map(); for(const item of items){if(!threads.has(item.thread_id))threads.set(item.thread_id,item);} for(const item of threads.values()){const row=document.createElement("div"); row.className="owner-help-row"; const message=document.createElement("small"); message.textContent=`${item.body} • ${new Date(item.created_at).toLocaleString()}`; const reply=document.createElement("textarea"); reply.rows=2; reply.maxLength=1000; reply.placeholder="Reply to this user…"; const actions=document.createElement("div"); actions.className="help-owner-actions"; const button=document.createElement("button"); button.type="button"; button.textContent="Reply"; button.onclick=async()=>{if(!reply.value.trim())return; await ownerFetch(`/api/admin/help/${encodeURIComponent(item.thread_id)}/reply`,{method:"POST",body:JSON.stringify({body:reply.value})}); reply.value=""; await loadHelpInbox();}; const ban=document.createElement("button"); ban.type="button"; ban.className="secondary danger-button"; ban.textContent="Ban device"; ban.onclick=async()=>{if(!confirm("Block this device from sending more help messages?"))return; await ownerFetch(`/api/admin/help/${encodeURIComponent(item.client_id)}/ban`,{method:"POST"}); row.remove();}; actions.append(button,ban); row.append(message,reply,actions); list.appendChild(row); if(lastHelpMessageId&&item.id!==lastHelpMessageId&&item.sender==="user"&&Notification.permission==="granted")new Notification("TCG Radar help request",{body:item.body}); lastHelpMessageId=item.id;}}
   catch(error){$("#ownerMessage").textContent=error.message;}
@@ -501,11 +509,25 @@ $("#loadUsageBtn").addEventListener("click",async()=>{
   $("#ownerUsage").textContent=`Anonymous devices: ${d.anonymous_devices} • Google accounts: ${d.google_accounts} • Push devices: ${d.push_devices} • Help users: ${d.help_devices} • Links clicked: ${d.link_click_total||0} • ${retailers}`;
 });
 function renderOwnerProducts(items,isOwner){
+  ownerProductItems=items;
+  ownerCanEditProducts=isOwner;
+  const allItems=items;
+  const query=($("#ownerProductSearch")?.value||"").trim().toLowerCase();
+  const sortMode=$("#ownerProductSort")?.value||"newest";
+  items=items.map((item,index)=>({item,index})).filter(({item})=>{
+    const text=`${item.product||""} ${item.store||""} ${item.game||""} ${item.set_name||""}`.toLowerCase();
+    return !query||text.includes(query);
+  }).sort((left,right)=>{
+    if(sortMode==="alphabetical") return String(left.item.product||"").localeCompare(String(right.item.product||""));
+    const leftTime=Date.parse(left.item.added_at||left.item.updated_at||"")||left.index;
+    const rightTime=Date.parse(right.item.added_at||right.item.updated_at||"")||right.index;
+    return sortMode==="oldest"?leftTime-rightTime:rightTime-leftTime;
+  }).map(({item})=>item);
   $("#ownerProducts").innerHTML="";
   const estimateProduct=$("#stockEstimateProduct");
   if(estimateProduct){
     const selected=estimateProduct.value;
-    estimateProduct.innerHTML=items.map(item=>`<option value="${item.id}">${item.product} — ${item.store}${item.stock_estimate?` (${item.stock_estimate})`:""}</option>`).join("");
+    estimateProduct.innerHTML=allItems.map(item=>`<option value="${item.id}">${item.product} — ${item.store}${item.stock_estimate?` (${item.stock_estimate})`:""}</option>`).join("");
     if([...estimateProduct.options].some(option=>option.value===selected)) estimateProduct.value=selected;
   }
   for(const item of items){
@@ -538,6 +560,8 @@ function renderOwnerProducts(items,isOwner){
     $("#ownerProducts").appendChild(el);
   }
 }
+$("#ownerProductSearch").addEventListener("input",()=>renderOwnerProducts(ownerProductItems,ownerCanEditProducts));
+$("#ownerProductSort").addEventListener("change",()=>renderOwnerProducts(ownerProductItems,ownerCanEditProducts));
 $("#ownerBtn").addEventListener("click",showOwner);
 $("#closeOwnerBtn").addEventListener("click",()=>$("#ownerDialog").close());
 $("#testPushBtn").addEventListener("click",async()=>{ $("#ownerMessage").textContent="Test scheduled—close TCG Radar completely now."; try{const result=await ownerFetch("/api/admin/push/test",{method:"POST"}); $("#ownerMessage").textContent=result.attempted?"Test scheduled for 10 seconds. Close TCG Radar completely now.":"No phones are subscribed yet—tap Enable Push Alerts on the main screen first.";}catch(error){$("#ownerMessage").textContent=error.message;} });
