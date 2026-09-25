@@ -163,7 +163,7 @@ def canonical_product_url(url):
 
         # Target's "moo" URL is an affiliate-facing variant of the same A-number page.
         if host == "target.com":
-            target_match = re.search(r"/A-(\\d+)$", path, re.I)
+            target_match = re.search(r"/A-(\d+)$", path, re.I)
             if target_match:
                 path = f"/p/-/A-{target_match.group(1)}"
 
