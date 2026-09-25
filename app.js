@@ -2,6 +2,7 @@
 const $ = s => document.querySelector(s);
 let rows = [];
 const WATCHLIST_KEY="tcg-radar-watchlist";
+const RETAILER_SELECTION_KEY="tcg-radar-retailer-selection";
 let watchlistOnly=false;
 const FILTER_IDS=["gameFilter","retailerFilter","statusFilter","markupFilter","quantityFilter","searchInput"];
 let appliedFilters={};
@@ -9,6 +10,7 @@ function readFilters(){return Object.fromEntries(FILTER_IDS.map(id=>[id,$("#"+id
 function setFilters(values){FILTER_IDS.forEach(id=>{$("#"+id).value=values[id]??"";});}
 function watchlist(){try{return new Set(JSON.parse(localStorage.getItem(WATCHLIST_KEY)||"[]"));}catch(_){return new Set();}}
 function saveWatchlist(items){localStorage.setItem(WATCHLIST_KEY,JSON.stringify([...items]));}
+function retailerSelections(){try{const value=JSON.parse(localStorage.getItem(RETAILER_SELECTION_KEY)||"{}");return value&&typeof value==="object"?value:{};}catch(_){return {};}}
 let deferredPrompt = null;
 let viewMode = "online";
 let activePage = "radar";
@@ -28,10 +30,13 @@ const API_BASE = location.hostname.endsWith("github.io")
 
 const productTypeLabels={
   elite_trainer_box:"ETB",booster_bundle:"Booster bundle",booster_box:"Booster box",
-  booster_pack:"Booster pack",three_pack_blister:"3-pack blister",tin:"Tin",
-  collection:"Collection",premium_collection:"Premium collection",
-  ultra_premium_collection:"Ultra-premium",build_and_battle:"Build & Battle",
-  deck:"Deck with packs",other_pack_product:"Pack product"
+  booster_pack:"Booster pack",sleeved_booster:"Sleeved booster",two_pack:"2-pack",
+  three_pack_blister:"3-pack blister",checklane_blister:"Checklane blister",tin:"Tin",
+  collection:"Collection",poster_collection:"Poster collection",ex_box:"ex Box",
+  knockout_collection:"Knock Out collection",super_premium_collection:"Super premium",
+  tech_sticker_collection:"Tech sticker collection",figure_collection:"Figure collection",
+  premium_collection:"Premium collection",ultra_premium_collection:"Ultra-premium",
+  build_and_battle:"Build & Battle",deck:"Deck with packs",other_pack_product:"Pack product"
 };
 
 const statusLabels = {
@@ -83,10 +88,21 @@ function render(){
            (!q||`${x.product} ${x.store} ${x.game} ${x.area}`.toLowerCase().includes(q));
   });
 
+  const groups=new Map();
+  for(const item of filtered){
+    const key=item.catalog_key||`unique:${item.id}`;
+    if(!groups.has(key))groups.set(key,[]);
+    groups.get(key).push(item);
+  }
+  const selections=retailerSelections();
+  const displayItems=[...groups.entries()].map(([key,offers])=>{
+    const selected=offers.find(offer=>offer.id===selections[key])||offers[0];
+    return {...selected,retailer_offers:offers,catalog_key:key};
+  });
   const resultContainer=viewMode==="local"?$("#localResults"):$("#results");
   resultContainer.innerHTML="";
   const tpl=$("#itemTemplate");
-  for(const item of filtered){
+  for(const item of displayItems){
     const node=tpl.content.cloneNode(true);
     const image=node.querySelector(".product-image");
     if(item.image_url){ image.src=item.image_url; image.alt=item.product||"Product image"; image.onerror=()=>{image.hidden=true;}; } else image.hidden=true;
@@ -110,6 +126,16 @@ function render(){
     const addedAt=item.notification_at||item.created_at||item.added_at;
     node.querySelector(".checked").textContent=addedAt?`Added ${timeAgo(addedAt)==="just now"?"just now":timeAgo(addedAt)+" ago"}`:"";
     const buy=node.querySelector(".buy"); buy.href=retailerHref(item); buy.textContent=/Android/i.test(navigator.userAgent)&&["Amazon","Walmart","Target","Best Buy"].includes(item.store)?`Open in ${item.store} app`:`Open ${item.store} listing`;
+    if((item.retailer_offers||[]).length>1){
+      const selector=document.createElement("select"); selector.className="retailer-offer-select"; selector.setAttribute("aria-label","Choose retailer listing");
+      for(const offer of item.retailer_offers){
+        const option=document.createElement("option"); option.value=offer.id; option.selected=offer.id===item.id;
+        option.textContent=`${offer.store} • ${money(offer.price)} • ${statusLabels[offer.status]||offer.status||"Unknown"}`;
+        selector.appendChild(option);
+      }
+      selector.onchange=()=>{const saved=retailerSelections();saved[item.catalog_key]=selector.value;localStorage.setItem(RETAILER_SELECTION_KEY,JSON.stringify(saved));render();};
+      buy.parentElement.insertBefore(selector,buy);
+    }
     const watch=node.querySelector(".watch"), watched=watchlist().has(item.id);
     watch.textContent=watched?"★":"☆"; watch.classList.toggle("watched",watched); watch.setAttribute("aria-label",watched?"Remove from watchlist":"Add to watchlist");
     watch.onclick=()=>{const items=watchlist();items.has(item.id)?items.delete(item.id):items.add(item.id);saveWatchlist(items);updateWatchlistButton();render();};
@@ -122,7 +148,7 @@ function render(){
     resultContainer.appendChild(node);
   }
   initialFeedRendered=true;
-  $("#resultCount").textContent=filtered.length;
+  $("#resultCount").textContent=displayItems.length;
   $("#msrpCount").textContent=filtered.filter(x=>markupPct(x)!=null&&markupPct(x)<=0).length;
   const confirmed=rows.filter(x=>x.status==="in_stock");
   $("#confirmedCount").textContent=confirmed.length;
