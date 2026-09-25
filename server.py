@@ -145,8 +145,8 @@ VERIFIED_PRODUCT_PATHS = {
     "bestbuy.com": re.compile(r"/(?:site|product)/", re.I),
     "gamestop.com": re.compile(r"/(?:products?|p)/", re.I),
     "amazon.com": re.compile(r"/(?:dp|gp/product)/", re.I),
-    "costco.com": re.compile(r"/(?:.*/)?p/\d+", re.I),
-    "samsclub.com": re.compile(r"/s/", re.I),
+    "costco.com": re.compile(r"/(?:p/|[^/]*\.product\.\d+\.html)", re.I),
+    "samsclub.com": re.compile(r"/(?:s|ip)/", re.I),
     "cvs.com": re.compile(r"/shop/p/", re.I),
     "walgreens.com": re.compile(r"/store/c/", re.I),
 }
@@ -927,6 +927,7 @@ def official_seller_verified(source, store, parser_result, text):
         "cvs": ("sold by cvs", "shipped by cvs"),
         "walgreens": ("sold by walgreens", "shipped by walgreens"),
         "amazon": ("ships from amazon.com", "sold by amazon.com"),
+        "gamestop": ("sold by gamestop", "shipped by gamestop"),
     }
     page = text.lower()
     return any(phrase in page for phrase in direct_phrases.get(store_key, ()))
