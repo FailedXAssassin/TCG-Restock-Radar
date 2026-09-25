@@ -510,7 +510,7 @@ function renderOwnerProducts(items,isOwner){
   }
   for(const item of items){
     const el=document.createElement("div"); el.className="owner-product";
-    el.innerHTML=`<img class="owner-product-image" alt="" hidden><span><strong></strong><small></small></span><div class="product-actions">${isOwner?'<select class="priority-select" aria-label="Manual priority"><option value="high">High</option><option value="normal">Normal</option><option value="low">Low</option></select><button type="button" class="toggle"></button>':''}<button type="button" class="remove">Remove</button></div>`;
+    el.innerHTML=`<img class="owner-product-image" alt="" hidden><span><strong></strong><small></small></span><div class="product-actions">${isOwner?'<select class="priority-select" aria-label="Manual priority"><option value="high">High</option><option value="normal">Normal</option><option value="low">Low</option></select><button type="button" class="toggle"></button><button type="button" class="edit-image">Edit image</button>':''}<button type="button" class="remove">Remove</button></div>`;
     const ownerImage=el.querySelector(".owner-product-image");
     if(item.image_url){ ownerImage.src=item.image_url; ownerImage.alt=(item.product||"Product")+" image"; ownerImage.hidden=false; ownerImage.onerror=()=>{ownerImage.hidden=true;}; }
     el.querySelector("strong").textContent=item.product;
@@ -524,6 +524,16 @@ function renderOwnerProducts(items,isOwner){
     }
     const toggle=el.querySelector(".toggle");
     if(toggle){ toggle.textContent=item.enabled===false?"Resume":"Pause"; toggle.classList.toggle("secondary",true); toggle.onclick=async()=>{try{await ownerFetch(`/api/admin/products/${item.id}`,{method:"PATCH",body:JSON.stringify({enabled:item.enabled===false})}); await showOwner(); loadFeed();}catch(error){$("#ownerMessage").textContent=error.message;}}; }
+    const editImage=el.querySelector(".edit-image");
+    if(editImage){ editImage.onclick=async()=>{
+      const value=prompt("Paste a secure image URL to override the automatic picture. Leave blank to restore the official retailer image.",item.image_url||"");
+      if(value===null) return;
+      try{
+        await ownerFetch("/api/admin/products/"+item.id,{method:"PATCH",body:JSON.stringify({image_url:value.trim()})});
+        $("#ownerMessage").textContent=value.trim()?"Image override saved.":"Official retailer image restored.";
+        await loadManagerControls(); loadFeed();
+      }catch(error){$("#ownerMessage").textContent=error.message;}
+    }; }
     el.querySelector(".remove").onclick=async()=>{if(!confirm(`Remove ${item.product}?`))return; try{await ownerFetch(`/api/admin/products/${item.id}`,{method:"DELETE"}); await showOwner(); loadFeed();}catch(error){$("#ownerMessage").textContent=error.message;}};
     $("#ownerProducts").appendChild(el);
   }
@@ -574,7 +584,7 @@ async function loadReports(){try{const data=await ownerFetch("/api/admin/reports
 $("#loadReportsBtn").addEventListener("click",loadReports);
 async function loadModerators(){try{const data=await ownerFetch("/api/admin/moderators"); const list=$("#moderatorList"); list.innerHTML=""; for(const moderator of data.items||[]){const row=document.createElement("div"); row.className="owner-product"; row.innerHTML=`<span><strong></strong><small>Can add and remove tracked URLs only</small></span><button type="button" class="remove">Remove</button>`; row.querySelector("strong").textContent=moderator.name; row.querySelector("button").onclick=async()=>{if(!confirm(`Remove ${moderator.name}'s moderator access?`))return; try{await ownerFetch(`/api/admin/moderators/${moderator.id}`,{method:"DELETE"}); await loadModerators();}catch(error){$("#ownerMessage").textContent=error.message;}}; list.appendChild(row);}}catch(error){$("#ownerMessage").textContent=error.message;}}
 $("#moderatorForm").addEventListener("submit",async event=>{event.preventDefault(); try{const result=await ownerFetch("/api/admin/moderators",{method:"POST",body:JSON.stringify({name:$("#moderatorName").value})}); $("#moderatorName").value=""; await loadModerators(); prompt(`Copy this one-time moderator code for ${result.name}. Send it privately; it will not be shown again. They can use the manager link ending in ?manager=1.`,result.access_code);}catch(error){$("#ownerMessage").textContent=error.message;}});
-$("#productForm").addEventListener("submit",async event=>{event.preventDefault(); $("#ownerMessage").textContent="Adding to staged list…"; try{await ownerFetch("/api/admin/products",{method:"POST",body:JSON.stringify({product:$("#ownerProduct").value,url:$("#ownerUrl").value,game:$("#ownerGame").value,set_name:$("#ownerSet").value,product_type:$("#ownerProductType").value,packs:$("#ownerPacks").value||null,msrp:$("#ownerMsrp").value||null,priority:$("#ownerPriority").value,max_markup:$("#ownerMaxMarkup").value||80,area:"Online"})}); event.target.reset(); await loadManagerControls(); $("#ownerMessage").textContent="Added to the staged list. Publish when your batch is ready.";}catch(error){$("#ownerMessage").textContent=error.message;}});
+$("#productForm").addEventListener("submit",async event=>{event.preventDefault(); $("#ownerMessage").textContent="Adding to staged list…"; try{await ownerFetch("/api/admin/products",{method:"POST",body:JSON.stringify({product:$("#ownerProduct").value,url:$("#ownerUrl").value,game:$("#ownerGame").value,set_name:$("#ownerSet").value,product_type:$("#ownerProductType").value,packs:$("#ownerPacks").value||null,msrp:$("#ownerMsrp").value||null,priority:$("#ownerPriority").value,max_markup:$("#ownerMaxMarkup").value||80,area:"Online",image_url:$("#ownerImageUrl").value.trim()})}); event.target.reset(); await loadManagerControls(); $("#ownerMessage").textContent="Added to the staged list. Publish when your batch is ready.";}catch(error){$("#ownerMessage").textContent=error.message;}});
 
 $("#publishStagedBtn").addEventListener("click",async()=>{
   if(!confirm("Publish all staged products to live monitoring?")) return;
