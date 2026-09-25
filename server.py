@@ -1374,12 +1374,37 @@ async def fetch_pokemon_center_image(product_name):
 
 
 async def fetch_best_product_image(source):
-    image_url = await fetch_best_product_image(source)
+    image_url = await fetch_official_product_image(source.get("url", ""))
     if image_url:
         return image_url
     if _is_pokemon_product(source):
         return await fetch_pokemon_center_image(source.get("product", ""))
     return None
+
+
+async def fill_missing_product_images(limit=3):
+    """Persist a few missing product images at a time without touching stock checks."""
+    sources = _all_sources()
+    refreshed = []
+    checked = 0
+    for source in sources:
+        if checked >= max(1, int(limit)):
+            break
+        if str(source.get("image_url", "")).strip():
+            continue
+        checked += 1
+        image_url = await fetch_best_product_image(source)
+        if image_url:
+            source["image_url"] = image_url
+            refreshed.append({"id": source_id(source), "product": source.get("product", "")})
+        await asyncio.sleep(0.3)
+    if refreshed:
+        _write_sources(sources)
+    return {
+        "checked": checked,
+        "refreshed": len(refreshed),
+        "remaining": sum(1 for source in sources if not str(source.get("image_url", "")).strip()),
+    }
 
 
 def detect_quantity(text):
@@ -1878,6 +1903,7 @@ async def scheduler():
     next_checks = {}
     retailer_ready_at = {}
     last_priority_pulse = None
+    last_image_fill = 0.0
     startup_seeded = False
     max_parallel_retailers = 8
 
@@ -1890,6 +1916,11 @@ async def scheduler():
             continue
 
         current = time.monotonic()
+        # Image backfill is deliberately slow and independent of stock monitoring.
+        if current - last_image_fill >= 1200:
+            await fill_missing_product_images(limit=3)
+            last_image_fill = current
+            sources = load_sources()
         wall_clock = datetime.now(timezone.utc)
         pulse = f"{wall_clock:%Y-%m-%dT%H}:{wall_clock.minute // 15}"
 
@@ -2737,26 +2768,9 @@ async def add_product(payload: dict, authorization: str = Header(default="")):
 @app.post("/api/admin/products/refresh-images")
 async def refresh_missing_product_images(payload: dict, authorization: str = Header(default="")):
     require_admin(authorization)
-    requested = int(payload.get("limit", 10) or 10)
-    limit = min(10, max(1, requested))
-    sources = _all_sources()
-    refreshed = []
-    checked = 0
-    for source in sources:
-        if checked >= limit:
-            break
-        if str(source.get("image_url", "")).strip():
-            continue
-        checked += 1
-        image_url = await fetch_official_product_image(source.get("url", ""))
-        if image_url:
-            source["image_url"] = image_url
-            refreshed.append({"id": source_id(source), "product": source.get("product", "")})
-        await asyncio.sleep(0.25)
-    if refreshed:
-        _write_sources(sources)
-    remaining = sum(1 for source in sources if not str(source.get("image_url", "")).strip())
-    return {"checked": checked, "refreshed": len(refreshed), "remaining": remaining, "message": f"Found {len(refreshed)} official image(s). {remaining} item(s) still need an image."}
+    requested = int(payload.get("limit", 25) or 25)
+    result = await fill_missing_product_images(limit=min(25, max(1, requested)))
+    return {**result, "message": f"Found {result['refreshed']} official image(s). {result['remaining']} item(s) still need an image."}
 
 
 @app.post("/api/admin/restart")
