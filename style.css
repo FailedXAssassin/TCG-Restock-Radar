@@ -210,3 +210,8 @@ body:before{right:50%;bottom:12vh;transform:translateX(50%);width:min(82vw,460px
 .quiet-hours-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
 .quiet-hours-fields label{font-size:.82rem;color:var(--muted)}
 .quiet-hours-fields select{width:100%;margin-top:5px}
+
+.filter-reset{display:block;margin:10px auto 0;border:0;background:transparent;color:var(--muted);font-size:.82rem}
+.personal-note{margin:8px 0 0;padding:8px 10px;border-left:3px solid var(--accent);border-radius:8px;background:color-mix(in srgb,var(--panel) 70%,transparent);font-size:.84rem;color:var(--muted)}
+.backup-import{display:grid;gap:7px;margin-top:14px;color:var(--muted);font-size:.9rem}
+.backup-import input{padding:8px}
