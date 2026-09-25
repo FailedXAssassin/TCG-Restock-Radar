@@ -254,3 +254,16 @@ body:before{right:50%;bottom:12vh;transform:translateX(50%);width:min(82vw,460px
   .admin-overview small{font-size:.64rem;line-height:1.15;overflow-wrap:anywhere}
   .admin-overview strong{font-size:.7rem;line-height:1.2;overflow-wrap:anywhere}
 }
+
+
+/* The signed-in owner identity is clearly visible without exposing private account data. */
+.account-owner-name,.account-owner-status{
+  font-weight:950!important;
+  background:linear-gradient(90deg,#ff6b6b,#ffd166,#6ee7b7,#5eead4,#60a5fa,#c084fc,#f472b6);
+  background-size:300% 100%;
+  -webkit-background-clip:text;
+  background-clip:text;
+  color:transparent!important;
+  animation:owner-rainbow 5s linear infinite;
+}
+.account-owner-status{display:inline-block}
