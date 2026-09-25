@@ -448,6 +448,7 @@ $("#sortMode").addEventListener("change",event=>{localStorage.setItem(SORT_MODE_
 const ADMIN_KEY="tcg-radar-manager-secret";
 const MANAGER_MODE_KEY="tcg-radar-manager-mode";
 let managerRole="";
+let priorityAutomation={auto_high_priority:false,top_limit:20,trend_source:"not_configured",auto_selected_product_ids:[]};
 let helpPollTimer=null, lastHelpMessageId="";
 function updateManagerButton(){ $("#ownerBtn").hidden=!(location.search.includes("manager=1")||sessionStorage.getItem(ADMIN_KEY)||localStorage.getItem(MANAGER_MODE_KEY)); }
 updateManagerButton();
@@ -462,8 +463,21 @@ async function ownerFetch(path, options={}){
 }
 async function loadManagerControls(){
   $("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true; $("#adminOverview").hidden=true;
-  try{const data=await ownerFetch("/api/admin/products"); managerRole=data.role||""; healthAllowed=true; $("#healthSection").hidden=activePage!=="radar"; loadHealth(); localStorage.setItem(MANAGER_MODE_KEY,"1"); updateManagerButton(); $("#managerLogin").hidden=true; $("#productForm").hidden=false; $("#ownerOnlyControls").hidden=managerRole!=="owner"; renderOwnerProducts(data.items||[], managerRole==="owner"); $("#adminOverview").hidden=false; $("#adminRole").textContent=managerRole==="owner"?"Owner session":"Moderator session"; $("#adminProductCount").textContent=(data.items||[]).length; $("#adminAccess").textContent=managerRole==="owner"?"Full command access":"Product links only"; if(managerRole==="owner"){await loadModerators(); await loadHelpInbox(); clearInterval(helpPollTimer); helpPollTimer=setInterval(loadHelpInbox,20000);} $("#ownerMessage").textContent=managerRole==="owner"?"Owner access: messages and moderator controls are available.":"Moderator access: you can add and remove public product URLs.";}
-  catch(error){sessionStorage.removeItem(ADMIN_KEY); $("#managerLogin").hidden=false; $("#adminOverview").hidden=true; $("#ownerMessage").textContent=error.message;}
+  try{
+    const [data,settings]=await Promise.all([ownerFetch("/api/admin/products"),ownerFetch("/api/admin/priority-automation")]);
+    priorityAutomation=settings||priorityAutomation;
+    managerRole=data.role||""; healthAllowed=true; $("#healthSection").hidden=activePage!=="radar"; loadHealth(); localStorage.setItem(MANAGER_MODE_KEY,"1"); updateManagerButton(); $("#managerLogin").hidden=true; $("#productForm").hidden=false; $("#ownerOnlyControls").hidden=managerRole!=="owner";
+    const autoToggle=$("#autoPriorityToggle"), autoState=$("#autoPriorityState");
+    autoToggle.checked=Boolean(priorityAutomation.auto_high_priority);
+    autoToggle.disabled=managerRole!=="owner";
+    autoState.textContent=priorityAutomation.auto_high_priority
+      ? "On — the upcoming trends connector may promote up to 20 matched items. Manual priority controls are locked."
+      : "Off — manual High / Normal / Low controls are active below.";
+    renderOwnerProducts(data.items||[], managerRole==="owner");
+    $("#adminOverview").hidden=false; $("#adminRole").textContent=managerRole==="owner"?"Owner session":"Moderator session"; $("#adminProductCount").textContent=(data.items||[]).length; $("#adminAccess").textContent=managerRole==="owner"?"Full command access":"Product links only";
+    if(managerRole==="owner"){await loadModerators(); await loadHelpInbox(); clearInterval(helpPollTimer); helpPollTimer=setInterval(loadHelpInbox,20000);}
+    $("#ownerMessage").textContent=managerRole==="owner"?"Owner access: messages and moderator controls are available.":"Moderator access: you can add and remove public product URLs.";
+  }catch(error){sessionStorage.removeItem(ADMIN_KEY); $("#managerLogin").hidden=false; $("#adminOverview").hidden=true; $("#ownerMessage").textContent=error.message;}
 }
 function showOwner(){
   $("#ownerDialog").showModal(); $("#managerLogin").hidden=false; $("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true; $("#managerCode").value=""; $("#ownerMessage").textContent="Enter a manager code to unlock these controls.";
@@ -492,9 +506,16 @@ function renderOwnerProducts(items,isOwner){
   }
   for(const item of items){
     const el=document.createElement("div"); el.className="owner-product";
-    el.innerHTML=`<span><strong></strong><small></small></span><div class="product-actions">${isOwner?'<button type="button" class="toggle"></button>':''}<button type="button" class="remove">Remove</button></div>`;
+    el.innerHTML=`<span><strong></strong><small></small></span><div class="product-actions">${isOwner?'<select class="priority-select" aria-label="Manual priority"><option value="high">High</option><option value="normal">Normal</option><option value="low">Low</option></select><button type="button" class="toggle"></button>':''}<button type="button" class="remove">Remove</button></div>`;
     el.querySelector("strong").textContent=item.product;
     el.querySelector("small").textContent=`${item.store} • ${item.priority} priority • alert at ≤ ${item.max_markup ?? 80}% markup`;
+    const priority=el.querySelector(".priority-select");
+    if(priority){
+      priority.value=item.priority||"normal";
+      priority.disabled=Boolean(priorityAutomation.auto_high_priority);
+      priority.title=priority.disabled?"Turn off High Priority Auto to edit manual priorities.":"Manual monitoring priority";
+      priority.onchange=async()=>{try{await ownerFetch(`/api/admin/products/${item.id}`,{method:"PATCH",body:JSON.stringify({priority:priority.value})}); $("#ownerMessage").textContent=`${item.product} is now ${priority.value} priority.`; await loadManagerControls(); loadFeed();}catch(error){$("#ownerMessage").textContent=error.message;}};
+    }
     const toggle=el.querySelector(".toggle");
     if(toggle){ toggle.textContent=item.enabled===false?"Resume":"Pause"; toggle.classList.toggle("secondary",true); toggle.onclick=async()=>{try{await ownerFetch(`/api/admin/products/${item.id}`,{method:"PATCH",body:JSON.stringify({enabled:item.enabled===false})}); await showOwner(); loadFeed();}catch(error){$("#ownerMessage").textContent=error.message;}}; }
     el.querySelector(".remove").onclick=async()=>{if(!confirm(`Remove ${item.product}?`))return; try{await ownerFetch(`/api/admin/products/${item.id}`,{method:"DELETE"}); await showOwner(); loadFeed();}catch(error){$("#ownerMessage").textContent=error.message;}};
@@ -506,6 +527,13 @@ $("#closeOwnerBtn").addEventListener("click",()=>$("#ownerDialog").close());
 $("#testPushBtn").addEventListener("click",async()=>{ $("#ownerMessage").textContent="Test scheduled—close TCG Radar completely now."; try{const result=await ownerFetch("/api/admin/push/test",{method:"POST"}); $("#ownerMessage").textContent=result.attempted?"Test scheduled for 10 seconds. Close TCG Radar completely now.":"No phones are subscribed yet—tap Enable Push Alerts on the main screen first.";}catch(error){$("#ownerMessage").textContent=error.message;} });
 $("#announcementForm").addEventListener("submit",async event=>{event.preventDefault(); try{const result=await ownerFetch("/api/admin/announcements",{method:"POST",body:JSON.stringify({title:$("#announcementTitle").value,body:$("#announcementBody").value,url:location.href})}); $("#announcementBody").value=""; $("#ownerMessage").textContent=result.attempted?`Message sent to ${result.attempted} subscribed phone(s).`:"No phones are subscribed yet.";}catch(error){$("#ownerMessage").textContent=error.message;}});
 $("#verifiedDropForm").addEventListener("submit",async event=>{event.preventDefault(); try{const result=await ownerFetch("/api/admin/verified-drops",{method:"POST",body:JSON.stringify({product:$("#verifiedDropProduct").value,game:$("#verifiedDropGame").value,store:$("#verifiedDropStore").value,url:$("#verifiedDropUrl").value,price:$("#verifiedDropPrice").value||null,msrp:$("#verifiedDropMsrp").value||null,seller_confirmed:$("#verifiedDropSeller").checked})}); event.target.reset(); $("#ownerMessage").textContent=result.push_attempted?`Owner-confirmed drop posted for ${result.push_attempted} matching phone(s).`:"Owner-confirmed drop posted to Alert History; no subscribed phones matched it yet."; await loadAlerts();}catch(error){$("#ownerMessage").textContent=error.message;}});
+$("#autoPriorityToggle").addEventListener("change",async event=>{
+  try{
+    priorityAutomation=await ownerFetch("/api/admin/priority-automation",{method:"PATCH",body:JSON.stringify({auto_high_priority:event.target.checked})});
+    $("#ownerMessage").textContent=event.target.checked?"High Priority Auto is on. Manual priority controls are locked.":"High Priority Auto is off. Manual priority controls are active.";
+    await loadManagerControls();
+  }catch(error){event.target.checked=!event.target.checked;$("#ownerMessage").textContent=error.message;}
+});
 $("#stockEstimateForm").addEventListener("submit",async event=>{
   event.preventDefault();
   try{
