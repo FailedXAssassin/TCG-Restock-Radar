@@ -201,3 +201,5 @@ body:before{right:50%;bottom:12vh;transform:translateX(50%);width:min(82vw,460px
 
 /* Live-drop controls stay compact while still giving every normal user clear choices. */
 .card-actions{flex-wrap:wrap}.card-actions .why-alert,.card-actions .mute-item,.card-actions .mute-store{font-size:.76rem;padding:7px 8px}.card-actions .mute-store{color:#ffd580}
+
+.action-toast{position:fixed;left:50%;bottom:82px;transform:translateX(-50%);z-index:20;width:max-content;max-width:calc(100% - 32px);padding:10px 14px;border:1px solid rgba(70,245,205,.38);border-radius:999px;background:#102d31;color:#e8fffb;box-shadow:0 10px 30px rgba(0,0,0,.35);font-size:.86rem;font-weight:700;text-align:center}
