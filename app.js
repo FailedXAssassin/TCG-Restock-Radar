@@ -512,7 +512,12 @@ function accountHeaders(){return googleToken?{Authorization:`Bearer ${googleToke
 async function renderPurchases(){const list=$("#purchaseList"); list.innerHTML=""; if(!googleToken){$("#purchaseForm").hidden=true;$("#purchaseLoginNote").hidden=false;$("#signOutBtn").hidden=true;$("#googleSignIn").hidden=false;$("#accountStatus").textContent="Sign in with Google to save purchases across devices.";updateAccountQuick();return;} try{const response=await fetch(api("/api/purchases"),{headers:accountHeaders(),cache:"no-store"}); if(!response.ok)throw new Error("Your Google session expired. Please sign in again."); const items=(await response.json()).items||[]; $("#purchaseForm").hidden=false;$("#purchaseLoginNote").hidden=true;$("#signOutBtn").hidden=false;$("#googleSignIn").hidden=true;$("#accountStatus").textContent=accountUser?`Signed in as ${accountUser.is_owner?"Owner":(accountUser.name||"Google member")}`:"Signed in with Google";updateAccountQuick();$("#purchaseTotal").textContent=new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(items.reduce((sum,item)=>sum+Number(item.paid||0),0)); if(!items.length){list.innerHTML="<small>No purchases logged yet.</small>";return;} for(const item of items){const row=document.createElement("div"); row.className="purchase-row"; const info=document.createElement("span"); const title=document.createElement("strong"); title.textContent=`${item.name} × ${item.quantity}`; const detail=document.createElement("small"); detail.textContent=`${item.retailer||"Retailer not listed"} • ${item.date||"Date not listed"} • ${money(item.paid)}`; info.append(title,detail); const remove=document.createElement("button"); remove.className="remove"; remove.type="button"; remove.textContent="Remove"; remove.onclick=async()=>{await fetch(api(`/api/purchases/${encodeURIComponent(item.id)}`),{method:"DELETE",headers:accountHeaders()});renderPurchases();}; row.append(info,remove); list.appendChild(row);}}catch(error){saveGoogleToken("");$("#accountStatus").textContent=error.message;$("#purchaseForm").hidden=true;}}
 async function configureGoogleSignIn(){try{const config=await fetch(api("/api/auth/config"),{cache:"no-store"}).then(r=>r.json()); if(!config.enabled){$("#accountStatus").textContent="Google sign-in is being configured.";return;} if(googleToken){accountUser=await fetch(api("/api/auth/me"),{headers:accountHeaders()}).then(r=>r.ok?r.json():null);if(accountUser){renderPurchases();return;}googleToken="";sessionStorage.removeItem("tcg-radar-google-token");} if(!window.google?.accounts?.id){setTimeout(configureGoogleSignIn,500);return;} window.google.accounts.id.initialize({client_id:config.client_id,callback:credential=>{saveGoogleToken(credential.credential);fetch(api("/api/auth/me"),{headers:accountHeaders()}).then(r=>r.ok?r.json():null).then(user=>{if(!user){saveGoogleToken("");throw new Error("Google sign-in was not accepted");}accountUser=user;updateManagerButton();renderPurchases();loadFeed();if($("#accountDialog").open) $("#accountDialog").close();}).catch(error=>{$("#accountStatus").textContent=error.message;});},});$("#googleSignIn").innerHTML="";window.google.accounts.id.renderButton($("#googleSignIn"),{theme:"filled_black",size:"large",shape:"pill",text:"signin_with"});}catch(_){$("#accountStatus").textContent="Google sign-in is temporarily unavailable.";}}
 function openPurchases(){ $("#purchasesDialog").showModal(); $("#purchaseDate").value=new Date().toISOString().slice(0,10); configureGoogleSignIn(); renderPurchases(); }
-function openAccount(){ $("#accountDialog").showModal(); configureGoogleSignIn(); renderPurchases(); }
+function openAccount(){
+  // Google renders once during startup. Re-rendering it after showModal() changes
+  // the dialog height and causes Android to recenter/jump the popup.
+  $("#accountDialog").showModal();
+  renderPurchases();
+}
 function signOut(){ saveGoogleToken(""); accountUser=null; clearManagerSecret(); managerRole=""; healthAllowed=false; localStorage.removeItem(MANAGER_MODE_KEY); updateManagerButton(); $("#googleSignIn").innerHTML=""; $("#googleSignIn").hidden=false; configureGoogleSignIn(); renderPurchases(); loadFeed(); }
 $("#openPurchasePage").addEventListener("click",openPurchases);
 $("#closePurchasesBtn").addEventListener("click",()=>$("#purchasesDialog").close());
@@ -617,8 +622,21 @@ async function loadManagerControls(){
 }
 function showOwner(){
   const managerLink=new URLSearchParams(location.search).has("manager");
-  if((accountUser&&!accountUser.is_owner&&!managerSecret())||(!hasManagerAccess()&&!managerLink)) return;
-  $("#ownerDialog").showModal(); $("#managerLogin").hidden=false; $("#ownerPinQuick").hidden=true; $("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true; $("#managerCode").value=""; $("#ownerMessage").textContent="Enter a PIN to unlock these controls.";
+  const signedInOwner=Boolean(accountUser?.is_owner);
+  if((accountUser&&!signedInOwner&&!managerSecret())||(!hasManagerAccess()&&!managerLink)) return;
+  $("#ownerDialog").showModal();
+  $("#ownerPinQuick").hidden=true;
+  $("#productForm").hidden=true;
+  $("#ownerOnlyControls").hidden=true;
+  $("#managerCode").value="";
+  if(signedInOwner){
+    $("#managerLogin").hidden=true;
+    $("#ownerMessage").textContent="Opening owner controls…";
+    loadManagerControls();
+    return;
+  }
+  $("#managerLogin").hidden=false;
+  $("#ownerMessage").textContent="Enter a PIN to unlock these controls.";
   if(hasManagerAccess()) loadManagerControls();
 }
 $("#cancelManager").addEventListener("click",()=>{ $("#ownerDialog").close(); });
