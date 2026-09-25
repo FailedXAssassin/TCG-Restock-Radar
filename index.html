@@ -31,7 +31,7 @@
 
     <section class="radar-snapshot" data-page="radar" aria-label="Radar snapshot">
       <article class="snapshot-card"><span class="snapshot-icon">◉</span><div><small>Confirmed now</small><strong id="confirmedCount">0</strong></div></article>
-      <article id="activeTrackerSnapshot" class="snapshot-card"><span class="snapshot-icon">⌁</span><div><small>Active trackers</small><strong id="activeCount">0</strong></div></article>
+      <article id="activeTrackerSnapshot" class="snapshot-card" hidden><span class="snapshot-icon">⌁</span><div><small>Active trackers</small><strong id="activeCount">0</strong></div></article>
       <article class="snapshot-card snapshot-highlight"><span class="snapshot-icon">✦</span><div><small>Latest verified</small><strong id="latestVerified">Waiting for a scan</strong></div></article>
     </section>
 
@@ -421,6 +421,7 @@
 
   <dialog id="dropNoteDialog"><form method="dialog" class="dialog-card" id="dropNoteForm"><div class="dialog-title"><h2>Add a private note</h2><button value="cancel" class="secondary">Close</button></div><p id="dropNoteProduct" class="muted"></p><textarea id="dropNoteText" maxlength="500" rows="4" placeholder="Example: Wait for a better price, already bought one, check Friday…"></textarea><div class="dialog-actions"><button id="removeDropNoteBtn" type="button" class="secondary">Remove note</button><button value="default">Save note</button></div></form></dialog>
   <dialog id="backupDialog"><div class="dialog-card"><div class="dialog-title"><h2>Backup my setup</h2><button id="closeBackupBtn" type="button" class="secondary">Close</button></div><p class="muted">Back up your watchlist, saved filters, private notes, alert choices, and quiet hours. PINs, Google sign-in, purchases, and manager data stay private and are not included.</p><div class="dialog-actions"><button id="downloadJsonBtn" type="button">Download JSON backup</button><button id="downloadCsvBtn" type="button" class="secondary">Download watchlist CSV</button></div><label class="backup-import">Restore a JSON backup<input id="restoreBackupFile" type="file" accept="application/json,.json" /></label><p id="backupMessage" class="muted"></p></div></dialog>
+  <dialog id="pinFeedbackDialog" class="confirm-dialog"><div><h2 id="pinFeedbackTitle">PIN check</h2><p id="pinFeedbackText"></p><div class="dialog-actions"><button id="closePinFeedbackBtn" type="button">OK</button></div></div></dialog>
   <div id="actionToast" class="action-toast" role="status" hidden></div>
 
   <nav class="bottom-nav" aria-label="Primary navigation">
