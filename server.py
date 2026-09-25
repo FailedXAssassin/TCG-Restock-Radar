@@ -1497,11 +1497,32 @@ async def check_product(source):
         }
 
 
+async def _run_scheduled_check(source, next_checks):
+    """Run one retailer check and schedule its next eligible pass."""
+    key = source_id(source)
+    store = retailer_name(source["url"], source.get("store", "Unknown"))
+    health = get_retailer_health(store)
+
+    await check_product(source)
+
+    base = interval_for(source)
+    multiplier = health["backoff_multiplier"]
+    next_interval = base * multiplier
+    jitter = random.uniform(0.95, 1.05)
+    next_checks[key] = time.monotonic() + next_interval * jitter
+    health["next_eligible_check"] = datetime.fromtimestamp(
+        time.time() + next_interval * jitter,
+        timezone.utc,
+    ).isoformat()
+
+
 async def scheduler():
     print("TCG Radar scheduler started")
 
     next_checks = {}
+    retailer_ready_at = {}
     last_priority_pulse = None
+    max_parallel_retailers = 8
 
     while True:
         await maybe_run_discovery()
@@ -1512,7 +1533,6 @@ async def scheduler():
             continue
 
         current = time.monotonic()
-
         wall_clock = datetime.now(timezone.utc)
         pulse = f"{wall_clock:%Y-%m-%dT%H}:{wall_clock.minute // 15}"
 
@@ -1530,62 +1550,49 @@ async def scheduler():
                 next_checks[source_id(source)] = current + 2 + (index * 3) + random.uniform(0, 2)
             last_priority_pulse = pulse
 
+        due_by_retailer = {}
+        priority_rank = {"high": 0, "normal": 1, "low": 2}
         for source in sources:
             key = source_id(source)
-
             if key not in next_checks:
-                # Initial staggering prevents all products
-                # from firing simultaneously after startup.
-                next_checks[key] = (
-                    current
-                    + random.uniform(1, 15)
-                )
+                # A brief, jittered start keeps startup gentle while every card
+                # is already visible to the user through /api/feed.
+                next_checks[key] = current + random.uniform(1, 15)
 
             if current < next_checks[key]:
                 continue
 
-            store = retailer_name(
-                source["url"],
-                source.get("store", "Unknown"),
+            store = retailer_name(source["url"], source.get("store", "Unknown"))
+            if current < retailer_ready_at.get(store, 0):
+                continue
+            due_by_retailer.setdefault(store, []).append(source)
+
+        selected = []
+        for store in sorted(due_by_retailer):
+            if len(selected) >= max_parallel_retailers:
+                break
+            source = min(
+                due_by_retailer[store],
+                key=lambda item: priority_rank.get(
+                    str(item.get("priority", "normal")).lower(), 1
+                ),
             )
+            selected.append((store, source))
+            # Never overlap two requests to the same retailer. Different
+            # retailers may run together, which makes a first scan much faster.
+            retailer_ready_at[store] = current + 1
 
-            health = get_retailer_health(
-                store
+        if selected:
+            results = await asyncio.gather(
+                *[_run_scheduled_check(source, next_checks) for _, source in selected],
+                return_exceptions=True,
             )
-
-            await check_product(source)
-
-            base = interval_for(source)
-
-            multiplier = health[
-                "backoff_multiplier"
-            ]
-
-            next_interval = (
-                base * multiplier
-            )
-
-            # Small scheduling spread.
-            jitter = random.uniform(
-                0.95,
-                1.05,
-            )
-
-            next_checks[key] = (
-                time.monotonic()
-                + next_interval * jitter
-            )
-
-            health["next_eligible_check"] = datetime.fromtimestamp(
-                time.time() + next_interval * jitter,
-                timezone.utc,
-            ).isoformat()
-
-            # Never hammer multiple products at the exact
-            # same instant.
+            for (store, _), result in zip(selected, results):
+                if isinstance(result, Exception):
+                    mark_failure(store, str(result))
+            await asyncio.sleep(0.25)
+        else:
             await asyncio.sleep(1)
-
-        await asyncio.sleep(1)
 
 
 @asynccontextmanager
