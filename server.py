@@ -772,11 +772,16 @@ def clean_image_url(value):
 
 
 def require_admin(authorization=Header(default="")):
-    if not ADMIN_SECRET:
-        raise HTTPException(status_code=503, detail="Owner controls are not configured yet")
     token = authorization.removeprefix("Bearer ").strip()
-    if not token or not secrets.compare_digest(token, ADMIN_SECRET):
-        raise HTTPException(status_code=401, detail="Owner secret is not valid")
+    if ADMIN_SECRET and token and secrets.compare_digest(token, ADMIN_SECRET):
+        return "owner"
+    try:
+        user = google_user(authorization)
+        if user.get("is_owner"):
+            return "owner"
+    except HTTPException:
+        pass
+    raise HTTPException(status_code=401, detail="Owner authentication is not valid")
 
 
 def _token_hash(token):
@@ -813,11 +818,15 @@ def _write_moderators(moderators):
 
 
 def manager_role(authorization=Header(default="")):
-    if not ADMIN_SECRET:
-        raise HTTPException(status_code=503, detail="Manager controls are not configured yet")
     token = authorization.removeprefix("Bearer ").strip()
-    if token and secrets.compare_digest(token, ADMIN_SECRET):
+    if ADMIN_SECRET and token and secrets.compare_digest(token, ADMIN_SECRET):
         return "owner"
+    try:
+        user = google_user(authorization)
+        if user.get("is_owner"):
+            return "owner"
+    except HTTPException:
+        pass
     hashed = _token_hash(token) if token else ""
     for moderator in _moderators():
         if hashed and secrets.compare_digest(hashed, moderator.get("secret_hash", "")):
@@ -2020,7 +2029,7 @@ async def local_scan(payload: dict, authorization: str = Header(default="")):
     _enforce_local_scan_cooldown(client_id)
 
     role = _manager_role_or_none(authorization)
-    is_manager = role in {"owner", "moderator"}
+    is_manager = role in {"owner", "moderator", "google_owner"}
     remaining = None
     if not is_manager and not _valid_local_zip_session(client_id, zip_code, session_id):
         session_id, remaining = _start_local_zip_session(client_id, zip_code, False)
