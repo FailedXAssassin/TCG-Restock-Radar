@@ -225,3 +225,10 @@ body:before{right:50%;bottom:12vh;transform:translateX(50%);width:min(82vw,460px
 #accountDialog #googleSignIn{flex:0 0 48px;height:48px;min-height:48px;margin:12px 0}
 #accountDialog #accountStatus{min-height:24px}
 @media(max-height:650px){#accountDialog,#accountDialog .account-dialog-card{height:auto;min-height:220px}#accountDialog{max-height:calc(100dvh - 28px);overflow:auto}}
+
+
+/* Command Center is fully painted before its contents load—no blue/default dialog frame. */
+#ownerDialog{box-sizing:border-box;background:#120e1b;color:#fff;border:1px solid #4e345e;border-radius:25px;overflow:hidden;isolation:isolate}
+#ownerDialog .admin-page{box-sizing:border-box}
+#ownerMessage:empty{display:none;margin:0}
+#ownerBtn{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
