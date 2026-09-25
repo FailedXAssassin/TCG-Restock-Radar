@@ -3,6 +3,9 @@ const $ = s => document.querySelector(s);
 let rows = [];
 const WATCHLIST_KEY="tcg-radar-watchlist";
 const RETAILER_SELECTION_KEY="tcg-radar-retailer-selection";
+const SORT_MODE_KEY="tcg-radar-sort-mode";
+const ALERT_FRESH_MS=30*60*1000;
+let showEarlierAlerts=false;
 let watchlistOnly=false;
 const FILTER_IDS=["gameFilter","retailerFilter","statusFilter","markupFilter","quantityFilter","searchInput"];
 let appliedFilters={};
@@ -64,6 +67,21 @@ function timeAgo(value){
   const days=Math.floor(hours/24);
   return `${days} day${days===1?"":"s"}`;
 }
+function formatDropTime(value){
+  const date=new Date(value);
+  if(Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}).format(date);
+}
+function isTodayLocal(value){
+  const date=new Date(value);
+  if(Number.isNaN(date.getTime())) return false;
+  const now=new Date();
+  return date.getFullYear()===now.getFullYear()&&date.getMonth()===now.getMonth()&&date.getDate()===now.getDate();
+}
+function isFreshDrop(value){
+  const timestamp=new Date(value||0).getTime();
+  return Boolean(timestamp)&&Date.now()-timestamp>=0&&Date.now()-timestamp<=ALERT_FRESH_MS;
+}
 function retailerHref(item){
   const packages={"Amazon":"com.amazon.mShop.android.shopping","Walmart":"com.walmart.android","Target":"com.target.ui","Best Buy":"com.bestbuy.android"};
   if(!/Android/i.test(navigator.userAgent)||!packages[item.store]||!item.url) return item.url||"#";
@@ -111,6 +129,26 @@ function render(){
     const selected=directLive||orderedOffers.find(offer=>offer.id===selections[key])||orderedOffers[0];
     return {...selected,retailer_offers:orderedOffers,catalog_key:key};
   });
+  const sortMode=localStorage.getItem(SORT_MODE_KEY)||"newest";
+  displayItems.sort((left,right)=>{
+    if(sortMode==="price-asc"){
+      const a=Number.isFinite(Number(left.price))?Number(left.price):Infinity;
+      const b=Number.isFinite(Number(right.price))?Number(right.price):Infinity;
+      return a-b;
+    }
+    if(sortMode==="price-desc"){
+      const a=Number.isFinite(Number(left.price))?Number(left.price):-Infinity;
+      const b=Number.isFinite(Number(right.price))?Number(right.price):-Infinity;
+      return b-a;
+    }
+    const a=new Date(left.notification_at||left.created_at||left.first_seen_at||0).getTime()||0;
+    const b=new Date(right.notification_at||right.created_at||right.first_seen_at||0).getTime()||0;
+    return b-a;
+  });
+  const sortControl=$("#sortMode");
+  if(sortControl&&sortControl.value!==sortMode) sortControl.value=sortMode;
+  const todayCount=$("#todayDropCount");
+  if(todayCount) todayCount.textContent=String(rows.filter(item=>isTodayLocal(item.notification_at)).length);
   const resultContainer=viewMode==="local"?$("#localResults"):$("#results");
   resultContainer.innerHTML="";
   const tpl=$("#itemTemplate");
@@ -136,7 +174,15 @@ function render(){
     if(m!=null) el.classList.add(m<=0?"good":m<=40?"warn":"bad");
     node.querySelector(".evidence").textContent=item.evidence||"";
     const addedAt=item.notification_at||item.created_at||item.added_at;
-    node.querySelector(".checked").textContent=addedAt?`Added ${timeAgo(addedAt)==="just now"?"just now":timeAgo(addedAt)+" ago"}`:"";
+    const isFresh=isFreshDrop(item.notification_at);
+    if(isFresh) node.querySelector(".drop").classList.add("fresh-drop");
+    node.querySelector(".checked").textContent=item.notification_at?`Dropped ${formatDropTime(item.notification_at)}`:(addedAt?`Added ${formatDropTime(addedAt)}`:"");
+    const estimate=node.querySelector(".stock-estimate");
+    if(item.stock_estimate){
+      const reported=item.stock_estimate_reported_at?` • added ${formatDropTime(item.stock_estimate_reported_at)}`:"";
+      estimate.textContent=`Unverified stock estimate: ${item.stock_estimate}${reported}`;
+      estimate.hidden=false;
+    }
     const buy=node.querySelector(".buy"); buy.href=retailerHref(item); buy.textContent=/Android/i.test(navigator.userAgent)&&["Amazon","Walmart","Target","Best Buy"].includes(item.store)?`Open in ${item.store} app`:`Open ${item.store} listing`;
     buy.addEventListener("click",()=>recordRetailerLinkClick(item));
     if((item.retailer_offers||[]).length>1){
@@ -312,19 +358,30 @@ async function loadAlerts(){
   try{
     const res=await fetch(api("/api/alerts?t="+Date.now()),{cache:"no-store"});
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    const items=(await res.json()).items||[];
+    const items=((await res.json()).items||[]).sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));
+    const recent=items.filter(item=>isFreshDrop(item.created_at));
+    const earlierToday=items.filter(item=>isTodayLocal(item.created_at)&&!isFreshDrop(item.created_at));
+    const visible=showEarlierAlerts?[...recent,...earlierToday]:recent;
     list.innerHTML="";
-    if(!items.length){list.innerHTML="<small>No notifications recorded yet.</small>";return;}
-    for(const item of items.slice(0,20)){
-      const row=document.createElement("a"); row.className="alert-row"; row.href=item.url||"#"; row.target="_blank"; row.rel="noopener";
-      const title=document.createElement("strong"); title.textContent=item.product||"Product update";
-      const detail=document.createElement("span"); const source=item.source==="owner_confirmed"?"🔵 Owner-confirmed direct drop":(statusLabels[item.status]||item.status||"Updated"); detail.textContent=`${item.store||"Retailer"} • ${source}`;
-      const time=document.createElement("time"); time.dateTime=item.created_at||""; time.textContent=item.created_at?new Date(item.created_at).toLocaleString():"";
-      row.append(title,detail,time); list.appendChild(row);
+    if(!visible.length){
+      list.innerHTML=`<small>${earlierToday.length?"No drops in the last 30 minutes.":"No notifications recorded yet."}</small>`;
+    }else{
+      for(const item of visible){
+        const row=document.createElement("a"); row.className=`alert-row ${isFreshDrop(item.created_at)?"fresh-alert":""}`; row.href=item.url||"#"; row.target="_blank"; row.rel="noopener";
+        const title=document.createElement("strong"); title.textContent=item.product||"Product update";
+        const detail=document.createElement("span"); const source=item.source==="owner_confirmed"?"🔵 Owner-confirmed direct drop":(statusLabels[item.status]||item.status||"Updated"); detail.textContent=`${item.store||"Retailer"} • ${source}`;
+        const time=document.createElement("time"); time.dateTime=item.created_at||""; time.textContent=item.created_at?`Dropped ${formatDropTime(item.created_at)}`:"";
+        row.append(title,detail,time); list.appendChild(row);
+      }
+    }
+    if(earlierToday.length){
+      const toggle=document.createElement("button"); toggle.type="button"; toggle.className="alert-history-toggle secondary";
+      toggle.textContent=showEarlierAlerts?"Show recent only":`Show earlier today (${earlierToday.length})`;
+      toggle.onclick=()=>{showEarlierAlerts=!showEarlierAlerts;loadAlerts();};
+      list.appendChild(toggle);
     }
   }catch(_){list.innerHTML="<small>Notification history is temporarily unavailable.</small>";}
 }
-
 const HELP_THREAD_KEY="tcg-radar-help-thread";
 const HELP_CLIENT_KEY="tcg-radar-help-client";
 const helpThread=localStorage.getItem(HELP_THREAD_KEY)||createVisitorId();
@@ -369,6 +426,7 @@ appliedFilters=readFilters();
 $("#applyFiltersBtn").addEventListener("click",()=>{appliedFilters=readFilters();$(".filter-drawer").open=false;render();});
 $("#cancelFiltersBtn").addEventListener("click",()=>{setFilters(appliedFilters);$(".filter-drawer").open=false;});
 $("#refreshBtn").addEventListener("click",loadFeed);
+$("#sortMode").addEventListener("change",event=>{localStorage.setItem(SORT_MODE_KEY,event.target.value);render();});
 const ADMIN_KEY="tcg-radar-manager-secret";
 const MANAGER_MODE_KEY="tcg-radar-manager-mode";
 let managerRole="";
@@ -408,6 +466,12 @@ $("#loadUsageBtn").addEventListener("click",async()=>{
 });
 function renderOwnerProducts(items,isOwner){
   $("#ownerProducts").innerHTML="";
+  const estimateProduct=$("#stockEstimateProduct");
+  if(estimateProduct){
+    const selected=estimateProduct.value;
+    estimateProduct.innerHTML=items.map(item=>`<option value="${item.id}">${item.product} — ${item.store}${item.stock_estimate?` (${item.stock_estimate})`:""}</option>`).join("");
+    if([...estimateProduct.options].some(option=>option.value===selected)) estimateProduct.value=selected;
+  }
   for(const item of items){
     const el=document.createElement("div"); el.className="owner-product";
     el.innerHTML=`<span><strong></strong><small></small></span><div class="product-actions">${isOwner?'<button type="button" class="toggle"></button>':''}<button type="button" class="remove">Remove</button></div>`;
@@ -424,6 +488,16 @@ $("#closeOwnerBtn").addEventListener("click",()=>$("#ownerDialog").close());
 $("#testPushBtn").addEventListener("click",async()=>{ $("#ownerMessage").textContent="Test scheduled—close TCG Radar completely now."; try{const result=await ownerFetch("/api/admin/push/test",{method:"POST"}); $("#ownerMessage").textContent=result.attempted?"Test scheduled for 10 seconds. Close TCG Radar completely now.":"No phones are subscribed yet—tap Enable Push Alerts on the main screen first.";}catch(error){$("#ownerMessage").textContent=error.message;} });
 $("#announcementForm").addEventListener("submit",async event=>{event.preventDefault(); try{const result=await ownerFetch("/api/admin/announcements",{method:"POST",body:JSON.stringify({title:$("#announcementTitle").value,body:$("#announcementBody").value,url:location.href})}); $("#announcementBody").value=""; $("#ownerMessage").textContent=result.attempted?`Message sent to ${result.attempted} subscribed phone(s).`:"No phones are subscribed yet.";}catch(error){$("#ownerMessage").textContent=error.message;}});
 $("#verifiedDropForm").addEventListener("submit",async event=>{event.preventDefault(); try{const result=await ownerFetch("/api/admin/verified-drops",{method:"POST",body:JSON.stringify({product:$("#verifiedDropProduct").value,game:$("#verifiedDropGame").value,store:$("#verifiedDropStore").value,url:$("#verifiedDropUrl").value,price:$("#verifiedDropPrice").value||null,msrp:$("#verifiedDropMsrp").value||null,seller_confirmed:$("#verifiedDropSeller").checked})}); event.target.reset(); $("#ownerMessage").textContent=result.push_attempted?`Owner-confirmed drop posted for ${result.push_attempted} matching phone(s).`:"Owner-confirmed drop posted to Alert History; no subscribed phones matched it yet."; await loadAlerts();}catch(error){$("#ownerMessage").textContent=error.message;}});
+$("#stockEstimateForm").addEventListener("submit",async event=>{
+  event.preventDefault();
+  try{
+    const estimate=$("#stockEstimateValue").value.trim();
+    await ownerFetch(`/api/admin/products/${encodeURIComponent($("#stockEstimateProduct").value)}`,{method:"PATCH",body:JSON.stringify({stock_estimate:estimate,stock_estimate_ttl_hours:$("#stockEstimateTtl").value})});
+    $("#stockEstimateValue").value="";
+    $("#ownerMessage").textContent=estimate?"Unverified stock estimate saved. It does not change OOS status or send an alert.":"Stock estimate cleared.";
+    await loadManagerControls(); await loadFeed();
+  }catch(error){$("#ownerMessage").textContent=error.message;}
+});
 async function loadDiscoveryReview(){
   try{
     const data=await ownerFetch("/api/admin/discovery");
