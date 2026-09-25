@@ -217,3 +217,11 @@ body:before{right:50%;bottom:12vh;transform:translateX(50%);width:min(82vw,460px
 .personal-note{margin:8px 0 0;padding:8px 10px;border-left:3px solid var(--accent);border-radius:8px;background:color-mix(in srgb,var(--panel) 70%,transparent);font-size:.84rem;color:var(--muted)}
 .backup-import{display:grid;gap:7px;margin-top:14px;color:var(--muted);font-size:.9rem}
 .backup-import input{padding:8px}
+
+
+/* Keep the Account dialog fixed while Google initializes. Android re-centers native dialogs when their height changes. */
+#accountDialog{box-sizing:border-box;height:286px;min-height:286px;overflow:hidden}
+#accountDialog .account-dialog-card{box-sizing:border-box;height:286px;min-height:286px;display:flex;flex-direction:column}
+#accountDialog #googleSignIn{flex:0 0 48px;height:48px;min-height:48px;margin:12px 0}
+#accountDialog #accountStatus{min-height:24px}
+@media(max-height:650px){#accountDialog,#accountDialog .account-dialog-card{height:auto;min-height:220px}#accountDialog{max-height:calc(100dvh - 28px);overflow:auto}}
