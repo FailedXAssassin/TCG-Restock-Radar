@@ -184,3 +184,17 @@ body:before{right:50%;bottom:12vh;transform:translateX(50%);width:min(82vw,460px
 
 /* Keep the Google sign-in card steady while its button loads on mobile. */
 #accountDialog{position:fixed;inset:0;margin:auto;width:min(520px,calc(100% - 28px));height:max-content;max-height:calc(100dvh - 48px);overflow:auto}
+
+/* Compact product cards: product information stays readable and actions sit in one clear row. */
+@media (max-width:560px){
+  .owner-product{display:grid;grid-template-columns:42px minmax(0,1fr);gap:9px;align-items:start;padding:12px}
+  .owner-product-image{grid-column:1;grid-row:1;width:42px;height:42px}
+  .owner-product>span{grid-column:2;grid-row:1;min-width:0;width:100%}
+  .owner-product>span strong{font-size:.95rem;line-height:1.25;overflow-wrap:anywhere}
+  .owner-product>span small{margin-top:4px;line-height:1.28}
+  .owner-product .product-actions{grid-column:1/-1;grid-row:2;display:grid;grid-template-columns:minmax(0,1.25fr) repeat(3,minmax(0,1fr));gap:7px;width:100%;margin-top:3px}
+  .owner-product .product-actions button,.owner-product .product-actions select{width:100%;min-width:0;padding:8px 6px;font-size:.78rem;white-space:normal}
+}
+.confirm-dialog{max-width:420px;width:calc(100% - 32px);border:1px solid rgba(255,255,255,.18);border-radius:20px;padding:0;background:#1a1225;color:#fff}
+.confirm-dialog>div{padding:22px}.confirm-dialog h2{margin:6px 0 10px}.confirm-dialog p{color:#d1c5db;line-height:1.45}.confirm-dialog::backdrop{background:rgba(4,3,10,.82);backdrop-filter:blur(5px)}
+.confirm-dialog .dialog-actions{justify-content:flex-end;margin-top:18px}.danger-button{background:#9f293d!important;color:#fff!important}
