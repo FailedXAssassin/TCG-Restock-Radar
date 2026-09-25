@@ -35,6 +35,17 @@
       <article class="snapshot-card snapshot-highlight"><span class="snapshot-icon">✦</span><div><small>Latest verified</small><strong id="latestVerified">Waiting for a scan</strong></div></article>
     </section>
 
+    <section data-page="radar" class="live-feed-toolbar card" aria-label="Live feed controls">
+      <div class="live-feed-label"><span aria-hidden="true">●</span><strong>LIVE FEED</strong><small>• <b id="todayDropCount">0</b> TODAY</small></div>
+      <label class="sort-control" for="sortMode">Sort:
+        <select id="sortMode">
+          <option value="newest">Newest ↓</option>
+          <option value="price-desc">Price ↓ (high to low)</option>
+          <option value="price-asc">Price ↑ (low to high)</option>
+        </select>
+      </label>
+    </section>
+
     <details id="welcomeGuide" data-page="radar" class="welcome-guide card">
       <summary><span><strong>New here? Start in 30 seconds</strong><small>Three quick steps to make the radar yours</small></span><span class="filter-icon">⌄</span></summary>
       <div class="guide-steps"><span><b>1</b> Tap <strong>Alerts</strong> to allow notifications.</span><span><b>2</b> Choose your personal price limit in <strong>Alert settings</strong>.</span><span><b>3</b> Use <strong>Filter products</strong> to follow what you collect.</span></div>
@@ -278,6 +289,16 @@
         </form>
         </details>
         <details class="admin-section">
+          <summary><span>≈ Stock estimate<small>Information only — never changes availability or sends an alert</small></span><span>⌄</span></summary>
+          <form id="stockEstimateForm" class="product-form">
+            <h3>Add an unverified stock estimate</h3>
+            <p class="muted">Use a public/community estimate such as “60K+”. It remains labeled unverified and expires automatically.</p>
+            <select id="stockEstimateProduct" required></select>
+            <div class="form-grid"><input id="stockEstimateValue" maxlength="60" placeholder="Estimate, e.g. 60K+" /><select id="stockEstimateTtl"><option value="24">Expires in 24 hours</option><option value="12">Expires in 12 hours</option><option value="48">Expires in 48 hours</option><option value="72">Expires in 72 hours</option></select></div>
+            <button type="submit">Save stock estimate</button>
+          </form>
+        </details>
+        <details class="admin-section">
           <summary><span>♙ Moderator access<small>Create or remove product managers</small></span><span>⌄</span></summary>
         <form id="moderatorForm" class="product-form">
           <h3>Moderators</h3>
@@ -315,6 +336,7 @@
         <div class="status-row"><span class="badge product-status"></span><span class="seller"></span></div>
         <p class="store"></p>
         <p class="checked"></p>
+        <p class="stock-estimate" hidden></p>
       </div>
       <div class="drop-side">
         <div class="price-row">
