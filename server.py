@@ -3076,21 +3076,10 @@ async def get_public_nickname(authorization: str = Header(default="")):
     return {"nickname": user.get("nickname", "")}
 
 
-@app.post("/api/admin/moderators", status_code=201)
-async def add_moderator(payload: dict, authorization: str = Header(default="")):
+@app.post("/api/admin/moderators", status_code=410)
+async def legacy_add_moderator(authorization: str = Header(default="")):
     require_admin(authorization)
-    name = _nickname(payload.get("nickname", payload.get("name", "")))
-    if _nickname_taken(name):
-        raise HTTPException(status_code=409, detail="That nickname is already taken")
-    access_code = str(payload.get("access_code", "")).strip()
-    if not PIN_PATTERN.fullmatch(access_code):
-        raise HTTPException(status_code=422, detail="Moderator PIN must be 4 to 20 numbers")
-    moderator = {"id": secrets.token_urlsafe(8), "name": name, "secret_hash": _token_hash(access_code)}
-    moderators = _moderators()
-    moderators.append(moderator)
-    _write_moderators(moderators)
-    return {"id": moderator["id"], "nickname": name, "access_code": access_code}
-
+    raise HTTPException(status_code=410, detail="Create a single-use moderator invite instead")
 
 @app.delete("/api/admin/moderators/{moderator_id}", status_code=204)
 async def delete_moderator(moderator_id: str, authorization: str = Header(default="")):
