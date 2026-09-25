@@ -228,7 +228,7 @@ body:before{right:50%;bottom:12vh;transform:translateX(50%);width:min(82vw,460px
 
 
 /* Command Center is fully painted before its contents load—no blue/default dialog frame. */
-#ownerDialog{box-sizing:border-box;background:#120e1b;color:#fff;border:1px solid #4e345e;border-radius:25px;overflow:hidden;isolation:isolate}
-#ownerDialog .admin-page{box-sizing:border-box}
+#ownerDialog{box-sizing:border-box;background:#120e1b;color:#fff;border:1px solid #4e345e;border-radius:25px;overflow:auto;-webkit-overflow-scrolling:touch}
+#ownerDialog .admin-page{box-sizing:border-box;min-height:100%}
 #ownerMessage:empty{display:none;margin:0}
 #ownerBtn{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
