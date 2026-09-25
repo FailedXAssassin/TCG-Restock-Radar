@@ -27,6 +27,7 @@ SOURCES_FILE = Path(os.environ.get("TCG_RADAR_DATA_PATH", DATA_DIR / "sources.js
 PUSH_SUBSCRIPTIONS_FILE = Path(os.environ.get("TCG_RADAR_PUSH_SUBSCRIPTIONS_PATH", DATA_DIR / "push_subscriptions.json"))
 MODERATORS_FILE = Path(os.environ.get("TCG_RADAR_MODERATORS_PATH", DATA_DIR / "moderators.json"))
 ALERT_HISTORY_FILE = Path(os.environ.get("TCG_RADAR_ALERT_HISTORY_PATH", DATA_DIR / "alert_history.json"))
+AUTHORIZED_INTAKE_FILE = Path(os.environ.get("TCG_RADAR_AUTHORIZED_INTAKE_PATH", DATA_DIR / "authorized_intake_sources.json"))
 PRIORITY_AUTOMATION_FILE = Path(os.environ.get("TCG_RADAR_PRIORITY_AUTOMATION_PATH", DATA_DIR / "priority_automation.json"))
 ADMIN_SECRET = os.environ.get("TCG_RADAR_ADMIN_SECRET", "")
 VAPID_PUBLIC_KEY = os.environ.get("TCG_RADAR_VAPID_PUBLIC_KEY", "")
@@ -922,6 +923,38 @@ def _alert_history():
         return []
 
 
+def _authorized_intake_sources():
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT payload FROM radar_settings WHERE key = %s", ("authorized_intake_sources",))
+                row = cursor.fetchone()
+                return row[0] if row and isinstance(row[0], list) else []
+    try:
+        data = json.loads(AUTHORIZED_INTAKE_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _write_authorized_intake_sources(items):
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO radar_settings (key, payload) VALUES (%s, %s::jsonb) ON CONFLICT (key) DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()",
+                    ("authorized_intake_sources", json.dumps(items)),
+                )
+            connection.commit()
+        return
+    AUTHORIZED_INTAKE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    AUTHORIZED_INTAKE_FILE.write_text(json.dumps(items, indent=2) + "\n", encoding="utf-8")
+
+
+def _public_intake_source(item):
+    return {key: item.get(key) for key in ("id", "label", "created_at")}
+
+
 def _write_alert_event(event):
     if database_enabled():
         with _database_connection() as connection:
@@ -1214,6 +1247,8 @@ def invitation_signal(text):
 
 def detect_status(status_code, text, store=None):
     page = text.lower()
+    if any(token in page for token in ("captcha", "verify you are human", "unusual traffic", "access denied")):
+        return "blocked"
     if invitation_signal(page):
         return "invitation"
 
@@ -1449,10 +1484,13 @@ async def check_product(source):
         image_url = str(source.get("image_url", "")).strip() or extract_image_url(response.text)
 
         if status == "blocked":
+            # A challenge page can return HTTP 200; represent it honestly as a
+            # retailer block so managers see it instead of a silent miss.
+            block_reason = "Retailer challenge/CAPTCHA detected" if response.status_code == 200 else f"HTTP {response.status_code}"
             mark_failure(
                 store,
-                f"HTTP {response.status_code}",
-                response.status_code,
+                block_reason,
+                403 if response.status_code == 200 else response.status_code,
                 elapsed_ms,
             )
         elif response.status_code >= 400:
@@ -2612,6 +2650,25 @@ async def _broadcast_owner_confirmed_drop(event):
         _write_subscriptions([item for item in _subscriptions() if item.get("endpoint") not in expired])
 
 
+async def _broadcast_authorized_signal(event):
+    if not push_ready():
+        return
+    payload = {
+        "title": "TCG RADAR — AUTHORIZED SIGNAL",
+        "body": event["product"] + " • " + event["store"] + ((" • $" + format(event["price"], ".2f")) if event.get("price") is not None else ""),
+        "url": event["url"],
+        "tag": event["id"],
+    }
+    expired = []
+    for subscription in _subscriptions():
+        if not _matches_push_preferences(subscription, event):
+            continue
+        if await asyncio.to_thread(_send_web_push, subscription, payload):
+            expired.append(subscription.get("endpoint"))
+    if expired:
+        _write_subscriptions([item for item in _subscriptions() if item.get("endpoint") not in expired])
+
+
 async def _broadcast_announcement(title, body, url):
     payload = {"title": title, "body": body, "url": url, "tag": f"announcement-{int(time.time())}"}
     expired = []
@@ -2620,6 +2677,81 @@ async def _broadcast_announcement(title, body, url):
             expired.append(subscription.get("endpoint"))
     if expired:
         _write_subscriptions([item for item in _subscriptions() if item.get("endpoint") not in expired])
+
+
+@app.get("/api/admin/intake-sources")
+async def list_intake_sources(authorization: str = Header(default="")):
+    require_admin(authorization)
+    return {"items": [_public_intake_source(item) for item in _authorized_intake_sources()]}
+
+
+@app.post("/api/admin/intake-sources", status_code=201)
+async def create_intake_source(payload: dict, authorization: str = Header(default="")):
+    require_admin(authorization)
+    label = str(payload.get("label", "")).strip()[:80]
+    if not label:
+        raise HTTPException(status_code=422, detail="Give this authorized source a label")
+    sources = _authorized_intake_sources()
+    secret = secrets.token_urlsafe(24)
+    source = {"id": secrets.token_urlsafe(10), "label": label, "secret_hash": _token_hash(secret), "created_at": now_iso()}
+    sources.append(source)
+    _write_authorized_intake_sources(sources)
+    return {**_public_intake_source(source), "webhook_url": "/api/intake/" + source["id"], "secret": secret}
+
+
+@app.delete("/api/admin/intake-sources/{intake_id}", status_code=204)
+async def delete_intake_source(intake_id: str, authorization: str = Header(default="")):
+    require_admin(authorization)
+    sources = _authorized_intake_sources()
+    kept = [item for item in sources if item.get("id") != intake_id]
+    if len(kept) == len(sources):
+        raise HTTPException(status_code=404, detail="Authorized source was not found")
+    _write_authorized_intake_sources(kept)
+
+
+@app.post("/api/intake/{intake_id}", status_code=201)
+async def receive_authorized_signal(intake_id: str, payload: dict, x_tcg_radar_intake_key: str = Header(default="")):
+    source = next((item for item in _authorized_intake_sources() if item.get("id") == intake_id), None)
+    if not source or not x_tcg_radar_intake_key or not secrets.compare_digest(_token_hash(x_tcg_radar_intake_key), source.get("secret_hash", "")):
+        raise HTTPException(status_code=401, detail="Authorized intake key was not accepted")
+    product = str(payload.get("product", "")).strip()[:160]
+    game = str(payload.get("game", "")).strip()
+    url = canonical_product_url(payload.get("url", ""))
+    declared_store = str(payload.get("store", "")).strip()
+    store = retailer_name(url, declared_store)
+    price = safe_float(payload.get("price"))
+    if not product or game not in {"Pokemon", "One Piece", "Magic", "Other"}:
+        raise HTTPException(status_code=422, detail="A product name and supported game are required")
+    if not verified_product_url(url) or (declared_store and declared_store != store):
+        raise HTTPException(status_code=422, detail="Use a matching approved official retailer product URL")
+    if payload.get("retailer_direct_confirmed") is not True:
+        raise HTTPException(status_code=422, detail="Authorized signals must explicitly confirm retailer-direct availability")
+    recent_cutoff = datetime.now(timezone.utc) - timedelta(minutes=5)
+    for item in _alert_history():
+        if item.get("url") != url:
+            continue
+        try:
+            created = datetime.fromisoformat(str(item.get("created_at", "")).replace("Z", "+00:00"))
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            if created >= recent_cutoff:
+                return {"accepted": False, "deduplicated": True}
+        except (TypeError, ValueError):
+            continue
+    event = {
+        "id": "authorized-signal-" + secrets.token_urlsafe(10),
+        "product_id": "authorized-signal-" + secrets.token_urlsafe(8),
+        "product": product, "game": game, "store": store, "url": url,
+        "status": "in_stock", "price": round(price, 2) if price is not None else None,
+        "source": "authorized_external", "signal_label": source["label"],
+        "verification": "Authorized external signal: " + source["label"],
+        "created_at": now_iso(),
+    }
+    _write_alert_event(event)
+    attempted = sum(1 for subscription in _subscriptions() if _matches_push_preferences(subscription, event)) if push_ready() else 0
+    if attempted:
+        asyncio.create_task(_broadcast_authorized_signal(event))
+    return {"accepted": True, "push_attempted": attempted, "event_id": event["id"]}
 
 
 @app.post("/api/admin/verified-drops", status_code=201)
