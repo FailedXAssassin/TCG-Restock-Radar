@@ -126,11 +126,27 @@ function toggleStoreMute(store){
 }
 function showWhyAlert(item){
   $("#whyAlertProduct").textContent=item.product||"This item";
-  $("#whySeller").textContent=item.official_seller_verified?"Retailer-direct seller verified.":(item.seller?`Seller shown: ${item.seller}`:"Seller verification is unavailable.");
-  $("#whyChecks").textContent=item.status==="in_stock"?"Passed TCG Radar’s consecutive-check confirmation rule.":"This listing is visible, but its stock is not fully confirmed.";
+  $("#whySeller").textContent=item.official_seller_verified
+    ? "✓ Retailer check: sold directly by the retailer."
+    : (item.seller?`• Seller shown: ${item.seller}. This is not retail-stock alert eligible.`:"• Seller verification is unavailable.");
+  $("#whyChecks").textContent=item.status==="in_stock"
+    ? "✓ Stock check: passed TCG Radar’s consecutive-check confirmation."
+    : "• Stock check: the listing is visible, but stock is not fully confirmed.";
+  const prefs=alertPreferences();
+  const muted=mutedProducts().has(item.catalog_key||item.id)||Number(mutedStoresUntil()[item.store]||0)>Date.now();
+  const quiet=Boolean(prefs.quiet_hours?.enabled);
+  const gameEnabled=prefs.games.includes(item.game);
+  const storeEnabled=prefs.stores.includes(item.store);
+  $("#whyPreference").textContent=muted
+    ? "• This phone has the item or retailer muted, so a push can be suppressed."
+    : (!gameEnabled||!storeEnabled)
+      ? `• This phone’s saved filters do not currently include ${!gameEnabled?item.game:item.store}.`
+      : (quiet?"✓ Your game and retailer filters match; quiet hours may pause the push.":"✓ Your game and retailer filters match this listing.");
   const markup=markupPct(item);
-  $("#whyPrice").textContent=markup==null?"Price is shown without a comparable MSRP.":`${money(item.price)} is ${markup.toFixed(0)}% from MSRP and within your current alert limit of ${personalMarkup()}%.`;
-  $("#whyTime").textContent=item.checked_at?`Last checked ${formatDropTime(item.checked_at)}.`:(item.notification_at?`Alert sent ${formatDropTime(item.notification_at)}.`:"Recently added to the live feed.");
+  $("#whyPrice").textContent=markup==null
+    ? `• Price check: ${money(item.price)} is shown, but no MSRP comparison is available.`
+    : `✓ Price check: ${money(item.price)} is ${markup.toFixed(0)}% from MSRP; your alert limit is ${prefs.max_markup}%.`;
+  $("#whyTime").textContent=item.checked_at?`✓ Last retailer check: ${formatDropTime(item.checked_at)}.`:(item.notification_at?`✓ Alert recorded: ${formatDropTime(item.notification_at)}.`:"✓ Recently added to the live feed.");
   $("#whyAlertDialog").showModal();
 }
 function render(){
