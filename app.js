@@ -510,7 +510,9 @@ function renderOwnerProducts(items,isOwner){
   }
   for(const item of items){
     const el=document.createElement("div"); el.className="owner-product";
-    el.innerHTML=`<span><strong></strong><small></small></span><div class="product-actions">${isOwner?'<select class="priority-select" aria-label="Manual priority"><option value="high">High</option><option value="normal">Normal</option><option value="low">Low</option></select><button type="button" class="toggle"></button>':''}<button type="button" class="remove">Remove</button></div>`;
+    el.innerHTML=`<img class="owner-product-image" alt="" hidden><span><strong></strong><small></small></span><div class="product-actions">${isOwner?'<select class="priority-select" aria-label="Manual priority"><option value="high">High</option><option value="normal">Normal</option><option value="low">Low</option></select><button type="button" class="toggle"></button>':''}<button type="button" class="remove">Remove</button></div>`;
+    const ownerImage=el.querySelector(".owner-product-image");
+    if(item.image_url){ ownerImage.src=item.image_url; ownerImage.alt=(item.product||"Product")+" image"; ownerImage.hidden=false; ownerImage.onerror=()=>{ownerImage.hidden=true;}; }
     el.querySelector("strong").textContent=item.product;
     el.querySelector("small").textContent=`${item.store} • ${item.published===false?"staged — not live":"live"} • ${item.priority} priority • alert at ≤ ${item.max_markup ?? 80}% markup`;
     const priority=el.querySelector(".priority-select");
