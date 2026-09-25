@@ -483,8 +483,17 @@ CATALOG_PRODUCT_TYPES = {
     "booster_bundle",
     "booster_box",
     "booster_pack",
+    "sleeved_booster",
+    "two_pack",
     "three_pack_blister",
+    "checklane_blister",
     "collection",
+    "poster_collection",
+    "ex_box",
+    "knockout_collection",
+    "super_premium_collection",
+    "tech_sticker_collection",
+    "figure_collection",
     "premium_collection",
     "ultra_premium_collection",
     "tin",
@@ -540,6 +549,7 @@ def _clean_source(payload):
         "max_markup": max_markup,
         "priority": priority,
         "set_name": set_name,
+        "catalog_key": str(payload.get("catalog_key", "")).strip().lower()[:160],
         "product_type": product_type,
         "packs": packs,
         "official_seller_only": True,
@@ -1252,6 +1262,7 @@ async def check_product(source):
                 "Online",
             ),
             "set_name": source.get("set_name", ""),
+            "catalog_key": source.get("catalog_key", ""),
             "product_type": source.get("product_type", "other_pack_product"),
             "packs": source.get("packs"),
             "store": store,
@@ -1321,6 +1332,7 @@ async def check_product(source):
                 "Online",
             ),
             "set_name": source.get("set_name", ""),
+            "catalog_key": source.get("catalog_key", ""),
             "product_type": source.get("product_type", "other_pack_product"),
             "packs": source.get("packs"),
             "store": store,
@@ -1475,7 +1487,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="TCG Radar API",
-    version="3.5.6",
+    version="3.5.7",
     lifespan=lifespan,
 )
 
@@ -1495,7 +1507,7 @@ app.add_middleware(
 async def root():
     return {
         "name": "TCG Radar",
-        "version": "3.5.6",
+        "version": "3.5.7",
         "status": "online",
         "message": "TCG Radar backend is running.",
     }
@@ -1507,7 +1519,7 @@ async def health():
 
     return {
         "status": "online",
-        "version": "3.5.6",
+        "version": "3.5.7",
         "time": now_iso(),
         "configured_products": len(
             sources
