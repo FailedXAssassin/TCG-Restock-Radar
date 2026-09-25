@@ -294,6 +294,14 @@
           <label class="choice-label"><input id="verifiedDropSeller" type="checkbox" required> I personally verified it is sold by the retailer, not a marketplace seller.</label>
           <button type="submit">Post verified drop</button>
         </form>
+        <form id="intakeSourceForm" class="product-form">
+          <h3>Authorized signal source</h3>
+          <p class="muted">Create this only for a source that explicitly allows its alerts to be sent here. Keep the generated key private.</p>
+          <input id="intakeSourceLabel" maxlength="80" placeholder="Example: Approved partner webhook" />
+          <button type="submit">Create authorized webhook</button>
+          <pre id="intakeSourceCreated" class="intake-created" hidden></pre>
+          <div id="intakeSourceList" class="owner-products"></div>
+        </form>
         </details>
         <details class="admin-section">
           <summary><span>≈ Stock estimate<small>Information only — never changes availability or sends an alert</small></span><span>⌄</span></summary>
