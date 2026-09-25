@@ -324,9 +324,12 @@
         <details class="admin-section">
           <summary><span>♙ Moderator access<small>Create or remove product managers</small></span><span>⌄</span></summary>
         <form id="ownerPinForm" class="product-form">
-          <h3>Owner PIN</h3>
+          <h3>Change owner PIN</h3>
           <p id="ownerPinStatus" class="muted">Loading PIN status…</p>
-          <div class="form-grid"><input id="ownerPin" required type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="20" pattern="[0-9]{4,20}" placeholder="Set 4–20 digit owner PIN" /><button type="submit">Save owner PIN</button></div>
+          <input id="currentOwnerPin" type="password" inputmode="numeric" autocomplete="current-password" minlength="4" maxlength="20" pattern="[0-9]{4,20}" placeholder="Current PIN" />
+          <input id="ownerPin" required type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="20" pattern="[0-9]{4,20}" placeholder="New PIN (4–20 numbers)" />
+          <input id="confirmOwnerPin" required type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="20" pattern="[0-9]{4,20}" placeholder="Re-enter new PIN" />
+          <button type="submit">OK</button>
         </form>
         <form id="moderatorForm" class="product-form">
           <h3>Moderators</h3>
