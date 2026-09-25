@@ -69,6 +69,10 @@ function retailerHref(item){
   if(!/Android/i.test(navigator.userAgent)||!packages[item.store]||!item.url) return item.url||"#";
   try{ const parsed=new URL(item.url); return `intent://${parsed.host}${parsed.pathname}${parsed.search}#Intent;scheme=https;package=${packages[item.store]};S.browser_fallback_url=${encodeURIComponent(item.url)};end`; }catch(_){ return item.url||"#"; }
 }
+function recordRetailerLinkClick(item){
+  if(!item?.store||!item?.url) return;
+  fetch(api("/api/analytics/link-click"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({retailer:item.store}),keepalive:true}).catch(()=>{});
+}
 function render(){
   const game=appliedFilters.gameFilter??$("#gameFilter").value;
   const retailer=appliedFilters.retailerFilter??$("#retailerFilter").value, status=appliedFilters.statusFilter??$("#statusFilter").value;
@@ -134,6 +138,7 @@ function render(){
     const addedAt=item.notification_at||item.created_at||item.added_at;
     node.querySelector(".checked").textContent=addedAt?`Added ${timeAgo(addedAt)==="just now"?"just now":timeAgo(addedAt)+" ago"}`:"";
     const buy=node.querySelector(".buy"); buy.href=retailerHref(item); buy.textContent=/Android/i.test(navigator.userAgent)&&["Amazon","Walmart","Target","Best Buy"].includes(item.store)?`Open in ${item.store} app`:`Open ${item.store} listing`;
+    buy.addEventListener("click",()=>recordRetailerLinkClick(item));
     if((item.retailer_offers||[]).length>1){
       const selector=document.createElement("select"); selector.className="retailer-offer-select"; selector.setAttribute("aria-label","Choose retailer listing");
       for(const offer of item.retailer_offers){
@@ -396,7 +401,11 @@ async function loadHelpInbox(){
   catch(error){$("#ownerMessage").textContent=error.message;}
 }
 $("#loadHelpBtn").addEventListener("click",loadHelpInbox);
-$("#loadUsageBtn").addEventListener("click",async()=>{const d=await ownerFetch("/api/admin/usage");$("#ownerUsage").textContent=`Anonymous devices: ${d.anonymous_devices} • Google accounts: ${d.google_accounts} • Push devices: ${d.push_devices} • Help users: ${d.help_devices}`;});
+$("#loadUsageBtn").addEventListener("click",async()=>{
+  const d=await ownerFetch("/api/admin/usage");
+  const retailers=(d.link_clicks||[]).map(item=>`${item.retailer}: ${item.clicks}`).join(" • ")||"No product links clicked yet.";
+  $("#ownerUsage").textContent=`Anonymous devices: ${d.anonymous_devices} • Google accounts: ${d.google_accounts} • Push devices: ${d.push_devices} • Help users: ${d.help_devices} • Links clicked: ${d.link_click_total||0} • ${retailers}`;
+});
 function renderOwnerProducts(items,isOwner){
   $("#ownerProducts").innerHTML="";
   for(const item of items){
