@@ -618,7 +618,7 @@ async function loadManagerControls(){
     $("#stagedCount").textContent=staged ? (staged+" staged item"+(staged===1?"":"s")+" waiting to go live") : "No staged items waiting";
     $("#adminOverview").hidden=false; $("#adminRole").textContent=managerRole==="owner"?"Owner session":"Moderator session"; $("#adminProductCount").textContent=(data.items||[]).length; $("#adminAccess").textContent=managerRole==="owner"?"Full command access":"Product links only";
     if(managerRole==="owner"){await loadModerators(); await loadOwnerPinStatus(); await loadHelpInbox(); await loadIntakeSources(); clearInterval(helpPollTimer); helpPollTimer=setInterval(loadHelpInbox,20000);}
-    $("#ownerMessage").textContent=managerRole==="owner"?"Owner access: messages and moderator controls are available.":"Moderator access: you can add and remove public product URLs.";
+    $("#ownerMessage").textContent="";
   }catch(error){$("#managerLogin").hidden=false; $("#adminOverview").hidden=true; $("#ownerMessage").textContent=error.message;}
 }
 function showOwner(){
@@ -632,7 +632,7 @@ function showOwner(){
   $("#managerCode").value="";
   if(signedInOwner){
     $("#managerLogin").hidden=true;
-    $("#ownerMessage").textContent="Opening owner controls…";
+    $("#ownerMessage").textContent="";
     loadManagerControls();
     return;
   }
