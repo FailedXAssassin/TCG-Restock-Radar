@@ -734,6 +734,7 @@ def _clean_source(payload):
         "enabled": bool(payload.get("enabled", True)),
         # New manager entries are staged until an owner explicitly publishes them.
         "published": bool(payload.get("published", False)),
+        "added_at": str(payload.get("added_at") or now_iso()),
         "game": str(payload.get("game", "Other")).strip() or "Other",
         "area": str(payload.get("area", "Online")).strip() or "Online",
         "store": retailer_name(url, str(payload.get("store", "")).strip()),
@@ -825,6 +826,14 @@ def manager_role(authorization=Header(default="")):
 
 def require_product_manager(authorization=Header(default="")):
     return manager_role(authorization)
+
+
+def optional_manager_role(authorization=""):
+    """Return a manager role when supplied, but keep the public feed public."""
+    try:
+        return manager_role(authorization)
+    except HTTPException:
+        return None
 
 
 
@@ -2027,11 +2036,30 @@ def _feed_item_for_source(source: dict) -> dict:
 
 
 @app.get("/api/feed")
-async def feed():
-    items = [
+async def feed(authorization: str = Header(default="")):
+    manager = optional_manager_role(authorization)
+    all_items = [
         _feed_item_for_source(source)
         for source in load_sources()
     ]
+    # The full tracking catalog is an internal tool. Public members only receive
+    # confirmed live-drop cards from the last 30 minutes.
+    if manager:
+        items = all_items
+    else:
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=30)
+        def public_live_drop(item):
+            raw = item.get("notification_at")
+            if not raw:
+                return False
+            try:
+                stamp = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+                if stamp.tzinfo is None:
+                    stamp = stamp.replace(tzinfo=timezone.utc)
+                return stamp >= cutoff
+            except (TypeError, ValueError):
+                return False
+        items = [item for item in all_items if public_live_drop(item)]
 
     # Keep recent activity first within each inventory class, then place verified
     # retailer-direct offers ahead of marketplace offers. Marketplace ordering
@@ -2084,6 +2112,8 @@ async def feed():
         "generated_at": now_iso(),
         "counts": counts,
         "items": items,
+        "can_manage_feed": bool(manager),
+        "tracked_total": len(all_items) if manager else None,
     }
 
 
@@ -2380,7 +2410,7 @@ async def admin_products(authorization: str = Header(default="")):
 @app.post("/api/admin/products", status_code=201)
 async def add_product(payload: dict, authorization: str = Header(default="")):
     require_product_manager(authorization)
-    source = _clean_source({**payload, "published": False})
+    source = _clean_source({**payload, "published": False, "added_at": now_iso()})
     # A manual HTTPS override wins; otherwise one public page read finds a thumbnail.
     if not source.get("image_url"):
         image_url = await fetch_official_product_image(source["url"])
