@@ -608,6 +608,21 @@ async function loadReports(){try{const data=await ownerFetch("/api/admin/reports
 $("#loadReportsBtn").addEventListener("click",loadReports);
 async function loadModerators(){try{const data=await ownerFetch("/api/admin/moderators"); const list=$("#moderatorList"); list.innerHTML=""; for(const moderator of data.items||[]){const row=document.createElement("div"); row.className="owner-product"; row.innerHTML=`<span><strong></strong><small>Can add and remove tracked URLs only</small></span><button type="button" class="remove">Remove</button>`; row.querySelector("strong").textContent=moderator.name; row.querySelector("button").onclick=async()=>{if(!confirm(`Remove ${moderator.name}'s moderator access?`))return; try{await ownerFetch(`/api/admin/moderators/${moderator.id}`,{method:"DELETE"}); await loadModerators();}catch(error){$("#ownerMessage").textContent=error.message;}}; list.appendChild(row);}}catch(error){$("#ownerMessage").textContent=error.message;}}
 $("#moderatorForm").addEventListener("submit",async event=>{event.preventDefault(); try{const result=await ownerFetch("/api/admin/moderators",{method:"POST",body:JSON.stringify({name:$("#moderatorName").value})}); $("#moderatorName").value=""; await loadModerators(); prompt(`Copy this one-time moderator code for ${result.name}. Send it privately; it will not be shown again. They can use the manager link ending in ?manager=1.`,result.access_code);}catch(error){$("#ownerMessage").textContent=error.message;}});
+$("#testProductLinkBtn").addEventListener("click",async()=>{
+  const url=$("#ownerUrl").value.trim();
+  const result=$("#linkTestResult");
+  if(!url){result.hidden=false;result.textContent="Paste an official retailer product URL first.";return;}
+  result.hidden=false; result.textContent="Testing the official retailer page…";
+  try{
+    const data=await ownerFetch("/api/admin/products/test-link",{method:"POST",body:JSON.stringify({url})});
+    $("#ownerUrl").value=data.url;
+    if(!$("#ownerProduct").value.trim()&&data.title) $("#ownerProduct").value=data.title;
+    if(!$("#ownerImageUrl").value.trim()&&data.image_url) $("#ownerImageUrl").value=data.image_url;
+    result.textContent=(data.retailer||"Retailer")+" confirmed • "+(data.title||"Product title not supplied")+" • Image "+(data.image_url?"found":"not supplied")+". This does not check stock.";
+    result.classList.remove("error");
+  }catch(error){result.textContent=error.message;result.classList.add("error");}
+});
+
 $("#productForm").addEventListener("submit",async event=>{event.preventDefault(); $("#ownerMessage").textContent="Adding to staged list…"; try{await ownerFetch("/api/admin/products",{method:"POST",body:JSON.stringify({product:$("#ownerProduct").value,url:$("#ownerUrl").value,game:$("#ownerGame").value,set_name:$("#ownerSet").value,product_type:$("#ownerProductType").value,packs:$("#ownerPacks").value||null,msrp:$("#ownerMsrp").value||null,priority:$("#ownerPriority").value,max_markup:$("#ownerMaxMarkup").value||80,area:"Online",image_url:$("#ownerImageUrl").value.trim()})}); event.target.reset(); await loadManagerControls(); $("#ownerMessage").textContent="Added to the staged list. Publish when your batch is ready.";}catch(error){$("#ownerMessage").textContent=error.message;}});
 
 $("#publishStagedBtn").addEventListener("click",async()=>{
