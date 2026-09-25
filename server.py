@@ -979,7 +979,15 @@ def _clean_push_preferences(payload):
     games = [str(item) for item in payload.get("games", []) if str(item) in allowed_games]
     stores = [str(item) for item in payload.get("stores", []) if str(item) in allowed_stores]
     allow_third_party = bool(payload.get("allow_third_party", False))
-    return {"max_markup": max_markup, "games": games, "stores": stores, "allow_third_party": allow_third_party}
+    muted_product_ids = [str(item)[:200] for item in payload.get("muted_product_ids", []) if str(item).strip()][:500]
+    raw_store_mutes = payload.get("muted_stores_until", {})
+    muted_stores_until = {}
+    if isinstance(raw_store_mutes, dict):
+        for store, until in raw_store_mutes.items():
+            timestamp = safe_float(until)
+            if str(store) in allowed_stores and timestamp is not None and timestamp > time.time():
+                muted_stores_until[str(store)] = int(timestamp)
+    return {"max_markup": max_markup, "games": games, "stores": stores, "allow_third_party": allow_third_party, "muted_product_ids": muted_product_ids, "muted_stores_until": muted_stores_until}
 
 
 def _alert_history():
@@ -2728,6 +2736,11 @@ def _matches_push_preferences(subscription, item):
     if preference["games"] and item.get("game") not in preference["games"]:
         return False
     if preference["stores"] and item.get("store") not in preference["stores"]:
+        return False
+    product_keys = {str(item.get("id", "")), str(item.get("catalog_key", ""))}
+    if product_keys.intersection(preference.get("muted_product_ids", [])):
+        return False
+    if int(preference.get("muted_stores_until", {}).get(str(item.get("store", "")), 0) or 0) > int(time.time()):
         return False
     markup = safe_float(item.get("markup"))
     return not (markup is not None and markup > preference["max_markup"])
