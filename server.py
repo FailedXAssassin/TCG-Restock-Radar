@@ -9,7 +9,7 @@ import random
 import re
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -583,6 +583,43 @@ CATALOG_PRODUCT_TYPES = {
 }
 
 
+def _clean_estimate_timestamp(value):
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).isoformat()
+
+
+def _stock_estimate_fields(source):
+    estimate = str(source.get("stock_estimate") or "").strip()[:60]
+    if not estimate:
+        return {
+            "stock_estimate": None,
+            "stock_estimate_reported_at": None,
+            "stock_estimate_expires_at": None,
+        }
+    expires_at = _clean_estimate_timestamp(source.get("stock_estimate_expires_at"))
+    if expires_at:
+        expires = datetime.fromisoformat(expires_at)
+        if expires <= datetime.now(timezone.utc):
+            return {
+                "stock_estimate": None,
+                "stock_estimate_reported_at": None,
+                "stock_estimate_expires_at": None,
+            }
+    return {
+        "stock_estimate": estimate,
+        "stock_estimate_reported_at": _clean_estimate_timestamp(source.get("stock_estimate_reported_at")),
+        "stock_estimate_expires_at": expires_at,
+    }
+
+
 def _clean_source(payload):
     if not isinstance(payload, dict):
         raise HTTPException(status_code=422, detail="Product data must be an object")
@@ -632,6 +669,7 @@ def _clean_source(payload):
         "catalog_key": str(payload.get("catalog_key", "")).strip().lower()[:160],
         "product_type": product_type,
         "packs": packs,
+        **_stock_estimate_fields(payload),
         "official_seller_only": True,
     }
 
@@ -1350,6 +1388,7 @@ async def check_product(source):
             "catalog_key": source.get("catalog_key", ""),
             "product_type": source.get("product_type", "other_pack_product"),
             "packs": source.get("packs"),
+            **_stock_estimate_fields(source),
             "store": store,
             "product": source.get(
                 "product",
@@ -1422,6 +1461,7 @@ async def check_product(source):
             "catalog_key": source.get("catalog_key", ""),
             "product_type": source.get("product_type", "other_pack_product"),
             "packs": source.get("packs"),
+            **_stock_estimate_fields(source),
             "store": store,
             "product": source.get(
                 "product",
@@ -2168,6 +2208,19 @@ async def update_product(product_id: str, payload: dict, authorization: str = He
     for index, current in enumerate(sources):
         if source_id(current) != product_id:
             continue
+        if "stock_estimate" in payload:
+            estimate = str(payload.get("stock_estimate") or "").strip()[:60]
+            payload["stock_estimate"] = estimate
+            if estimate:
+                ttl_hours = safe_float(payload.get("stock_estimate_ttl_hours"), 24)
+                ttl_hours = min(168, max(1, ttl_hours if ttl_hours is not None else 24))
+                payload["stock_estimate_reported_at"] = now_iso()
+                payload["stock_estimate_expires_at"] = (
+                    datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
+                ).isoformat()
+            else:
+                payload["stock_estimate_reported_at"] = None
+                payload["stock_estimate_expires_at"] = None
         source = _clean_source({**current, **payload})
         if any(index != other_index and source.get("url") == other.get("url") for other_index, other in enumerate(sources)):
             raise HTTPException(status_code=409, detail="That product URL is already being monitored")
