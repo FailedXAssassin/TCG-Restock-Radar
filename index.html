@@ -368,6 +368,18 @@
     </div>
   </dialog>
 
+  <dialog id="removeProductDialog" class="confirm-dialog">
+    <div>
+      <div class="eyebrow">CONFIRM REMOVAL</div>
+      <h2>Remove tracked product?</h2>
+      <p><strong id="removeProductName"></strong> will stop being monitored and cannot be restored automatically.</p>
+      <div class="dialog-actions">
+        <button id="cancelRemoveProduct" type="button" class="secondary">Cancel</button>
+        <button id="confirmRemoveProduct" type="button" class="danger-button">Confirm remove</button>
+      </div>
+    </div>
+  </dialog>
+
   <template id="itemTemplate">
     <article class="drop card">
       <img class="product-image" alt="" loading="lazy" />
