@@ -183,4 +183,4 @@ body:before{right:50%;bottom:12vh;transform:translateX(50%);width:min(82vw,460px
 .intake-created{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0;padding:10px;border:1px solid rgba(161,111,255,.55);border-radius:10px;background:rgba(42,25,70,.45);color:#e7d8ff;font:500 .78rem/1.45 ui-monospace,SFMono-Regular,Menlo,monospace}
 
 /* Keep the Google sign-in card steady while its button loads on mobile. */
-.account-dialog{position:fixed;inset:0;margin:auto;width:min(520px,calc(100% - 28px));height:max-content;max-height:calc(100dvh - 48px);overflow:auto}
+#accountDialog{position:fixed;inset:0;margin:auto;width:min(520px,calc(100% - 28px));height:max-content;max-height:calc(100dvh - 48px);overflow:auto}
