@@ -738,7 +738,8 @@ def _clean_push_preferences(payload):
     allowed_stores = {"Walmart", "Target", "Amazon", "Best Buy", "GameStop", "Costco", "Sam's Club", "CVS", "Walgreens"}
     games = [str(item) for item in payload.get("games", []) if str(item) in allowed_games]
     stores = [str(item) for item in payload.get("stores", []) if str(item) in allowed_stores]
-    return {"max_markup": max_markup, "games": games, "stores": stores}
+    allow_third_party = bool(payload.get("allow_third_party", False))
+    return {"max_markup": max_markup, "games": games, "stores": stores, "allow_third_party": allow_third_party}
 
 
 def _alert_history():
@@ -855,17 +856,18 @@ def _send_web_push(subscription, payload):
 
 
 async def notify_transition(item):
-    # Only a two-check, retailer-direct restock may notify. Marketplace,
-    # invitation, loaded, unknown and single-check results remain visible in
-    # the feed but are deliberately quiet.
+    # Availability always needs two confirmations. Retailer-direct stock is
+    # eligible by default; a marketplace offer is eligible only for subscribers
+    # who explicitly opt in below.
     if not item.get("restock_confirmed"):
         return
     previous, current = item.get("previous_status"), item.get("status")
-    if current != "in_stock" or not item.get("official_seller_verified"):
+    direct_restock = current == "in_stock" and item.get("official_seller_verified")
+    marketplace_restock = current == "marketplace_in_stock"
+    if not (direct_restock or marketplace_restock):
         return
-    # One deterministic event per product/restock session. This is safe across
-    # process restarts and protects against duplicate notification tasks.
-    event_id_source = f"{item.get('id')}:{int(item.get('restock_session') or 0)}:restock"
+    # One deterministic event per product/restock session and offer type.
+    event_id_source = f"{item.get('id')}:{int(item.get('restock_session') or 0)}:{'direct' if direct_restock else 'marketplace'}"
     event = {
         "id": hashlib.sha256(event_id_source.encode("utf-8")).hexdigest()[:24],
         "product_id": item.get("id"),
@@ -874,6 +876,7 @@ async def notify_transition(item):
         "url": item.get("url"),
         "previous_status": previous,
         "status": current,
+        "offer_type": "retailer_direct" if direct_restock else "third_party",
         "price": item.get("price"),
         "msrp": item.get("msrp"),
         "created_at": now_iso(),
@@ -895,7 +898,9 @@ async def notify_transition(item):
             continue
         if preference["stores"] and item.get("store") not in preference["stores"]:
             continue
-        if current == "in_stock" and markup is not None and markup > preference["max_markup"]:
+        if marketplace_restock and not preference["allow_third_party"]:
+            continue
+        if markup is not None and markup > preference["max_markup"]:
             continue
         if await asyncio.to_thread(_send_web_push, subscription, payload):
             expired.append(subscription.get("endpoint"))
@@ -1287,18 +1292,17 @@ async def check_product(source):
 
         # A new sellout/loaded session re-arms exactly one future alert.
         # Persisting the session prevents a Railway restart from replaying it.
-        new_restock_session = bool(
-            previous and previous.get("status") == "in_stock"
-            and status in RESTOCK_ARMING_STATUSES
-        )
+        previous_purchasable = previous and previous.get("status") in {"in_stock", "marketplace_in_stock"}
+        new_restock_session = bool(previous_purchasable and status in RESTOCK_ARMING_STATUSES)
         restock_session = int(previous.get("restock_session") or 0) + (1 if new_restock_session else 0)
         live_alerted = False if new_restock_session else bool(previous.get("live_alerted"))
+        marketplace_alerted = False if new_restock_session else bool(previous.get("marketplace_alerted"))
         restock_armed = bool(previous.get("restock_armed")) or bool(previous and status in RESTOCK_ARMING_STATUSES)
         in_stock_streak = int(previous.get("in_stock_streak") or 0) + 1 if status == "in_stock" and retailer_direct else 0
-        restock_confirmed = bool(
-            restock_armed and status == "in_stock" and retailer_direct
-            and in_stock_streak >= 2 and not live_alerted
-        )
+        marketplace_streak = int(previous.get("marketplace_streak") or 0) + 1 if status == "marketplace_in_stock" else 0
+        direct_restock_confirmed = bool(restock_armed and status == "in_stock" and retailer_direct and in_stock_streak >= 2 and not live_alerted)
+        marketplace_restock_confirmed = bool(restock_armed and status == "marketplace_in_stock" and marketplace_streak >= 2 and not marketplace_alerted)
+        restock_confirmed = direct_restock_confirmed or marketplace_restock_confirmed
 
         checked_at = now_iso()
         notification_at = previous.get("notification_at")
@@ -1334,7 +1338,9 @@ async def check_product(source):
             "restock_armed": restock_armed,
             "restock_session": restock_session,
             "in_stock_streak": in_stock_streak,
-            "live_alerted": live_alerted or restock_confirmed,
+            "marketplace_streak": marketplace_streak,
+            "live_alerted": live_alerted or direct_restock_confirmed,
+            "marketplace_alerted": marketplace_alerted or marketplace_restock_confirmed,
             "restock_confirmed": restock_confirmed,
             "official_seller_verified": retailer_direct,
             "price": price,
@@ -1544,7 +1550,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="TCG Radar API",
-    version="3.6.0",
+    version="3.6.1",
     lifespan=lifespan,
 )
 
@@ -1564,7 +1570,7 @@ app.add_middleware(
 async def root():
     return {
         "name": "TCG Radar",
-        "version": "3.6.0",
+        "version": "3.6.1",
         "status": "online",
         "message": "TCG Radar backend is running.",
     }
@@ -1576,7 +1582,7 @@ async def health():
 
     return {
         "status": "online",
-        "version": "3.6.0",
+        "version": "3.6.1",
         "time": now_iso(),
         "configured_products": len(
             sources
@@ -1792,9 +1798,19 @@ async def feed():
         products.values()
     )
 
-    # Notification activity gets priority; otherwise retain first-seen order
-    # so routine background checks never reshuffle the product list.
+    # Keep recent activity first within each inventory class, then place verified
+    # retailer-direct offers ahead of marketplace offers. Marketplace ordering
+    # does not affect the user-specific alert preference.
     items.sort(key=lambda item: (item.get("notification_at") or "", item.get("first_seen_at") or ""), reverse=True)
+    def offer_priority(item: dict) -> int:
+        if item.get("status") == "in_stock" and item.get("official_seller_verified"):
+            return 0
+        if item.get("official_seller_verified"):
+            return 1
+        if item.get("status") == "marketplace_in_stock":
+            return 3
+        return 2
+    items.sort(key=offer_priority)
 
     counts = {
         "total": len(items),
