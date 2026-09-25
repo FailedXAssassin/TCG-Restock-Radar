@@ -282,6 +282,11 @@
       </div>
       </details>
       <section id="ownerOnlyControls" hidden>
+        <details class="admin-section" open>
+          <summary><span>⚙ Maintenance<small>Safe owner-only maintenance actions</small></span><span>⌄</span></summary>
+          <div class="owner-actions"><button id="refreshImagesBtn" type="button" class="secondary">Refresh missing images</button><button id="restartServerBtn" type="button" class="danger-button">Restart server</button></div>
+          <p id="maintenanceMessage" class="muted">Images are pulled only from official retailer pages. Refresh checks up to 10 missing images at a time.</p>
+        </details>
         <details class="admin-section">
           <summary><span>◉ Announcements<small>Send a push message to subscribed members</small></span><span>⌄</span></summary>
         <form id="announcementForm" class="product-form">
@@ -422,6 +427,7 @@
   <dialog id="dropNoteDialog"><form method="dialog" class="dialog-card" id="dropNoteForm"><div class="dialog-title"><h2>Add a private note</h2><button value="cancel" class="secondary">Close</button></div><p id="dropNoteProduct" class="muted"></p><textarea id="dropNoteText" maxlength="500" rows="4" placeholder="Example: Wait for a better price, already bought one, check Friday…"></textarea><div class="dialog-actions"><button id="removeDropNoteBtn" type="button" class="secondary">Remove note</button><button value="default">Save note</button></div></form></dialog>
   <dialog id="backupDialog"><div class="dialog-card"><div class="dialog-title"><h2>Backup my setup</h2><button id="closeBackupBtn" type="button" class="secondary">Close</button></div><p class="muted">Back up your watchlist, saved filters, private notes, alert choices, and quiet hours. PINs, Google sign-in, purchases, and manager data stay private and are not included.</p><div class="dialog-actions"><button id="downloadJsonBtn" type="button">Download JSON backup</button><button id="downloadCsvBtn" type="button" class="secondary">Download watchlist CSV</button></div><label class="backup-import">Restore a JSON backup<input id="restoreBackupFile" type="file" accept="application/json,.json" /></label><p id="backupMessage" class="muted"></p></div></dialog>
   <dialog id="pinFeedbackDialog" class="confirm-dialog"><div><h2 id="pinFeedbackTitle">PIN check</h2><p id="pinFeedbackText"></p><div class="dialog-actions"><button id="closePinFeedbackBtn" type="button">OK</button></div></div></dialog>
+  <dialog id="restartWarningDialog" class="confirm-dialog"><div><h2>Unpublished products waiting</h2><p id="restartWarningText">You have staged products that are not live yet. Restarting now may interrupt work in progress.</p><p><strong>Publish them first if they are ready. Restarting will not publish staged items.</strong></p><div class="dialog-actions"><button id="cancelRestartBtn" type="button" class="secondary">Cancel</button><button id="confirmRestartBtn" type="button" class="danger-button">Restart anyway</button></div></div></dialog>
   <div id="actionToast" class="action-toast" role="status" hidden></div>
 
   <nav class="bottom-nav" aria-label="Primary navigation">
