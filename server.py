@@ -2826,12 +2826,36 @@ async def add_product(payload: dict, authorization: str = Header(default="")):
     return {**source, "id": source_id(source), "staged": True}
 
 
+def _missing_image_items(limit=50):
+    items = []
+    for source in _all_sources():
+        if str(source.get("image_url", "")).strip():
+            continue
+        items.append({
+            "id": source_id(source),
+            "product": source.get("product", ""),
+            "store": retailer_name(source.get("url", ""), source.get("store", "")),
+            "game": source.get("game", ""),
+            "url": source.get("url", ""),
+        })
+        if len(items) >= max(1, min(100, int(limit))):
+            break
+    return items
+
+
+@app.get("/api/admin/products/missing-images")
+async def list_missing_product_images(authorization: str = Header(default="")):
+    require_admin(authorization)
+    items = _missing_image_items()
+    return {"items": items, "remaining": sum(1 for source in _all_sources() if not str(source.get("image_url", "")).strip())}
+
+
 @app.post("/api/admin/products/refresh-images")
 async def refresh_missing_product_images(payload: dict, authorization: str = Header(default="")):
     require_admin(authorization)
     requested = int(payload.get("limit", 25) or 25)
     result = await fill_missing_product_images(limit=min(25, max(1, requested)))
-    return {**result, "message": f"Found {result['refreshed']} official image(s). {result['remaining']} item(s) still need an image."}
+    return {**result, "message": f"Checked {result['checked']} missing item(s); found {result['refreshed']} official image(s). {result['remaining']} item(s) still need an image."}
 
 
 @app.post("/api/admin/restart")
