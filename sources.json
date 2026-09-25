@@ -23,7 +23,8 @@
     "url": "https://www.bestbuy.com/product/wizards-of-the-coast-magic-the-gathering-the-hobbit-scene-box-1-scene-box-per-order-styles-may-vary/JJ8VP7KQLK/sku/6678102",
     "msrp": 41.99,
     "max_markup": 80,
-    "priority": "high"
+    "priority": "high",
+    "official_seller_only": true
   },
   {
     "enabled": true,
@@ -34,7 +35,8 @@
     "url": "https://www.target.com/p/-/A-95290385",
     "msrp": 11.99,
     "max_markup": 80,
-    "priority": "high"
+    "priority": "high",
+    "official_seller_only": true
   },
   {
     "enabled": true,
