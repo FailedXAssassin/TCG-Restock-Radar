@@ -80,6 +80,7 @@ http_client = None
 last_discovery_attempt = {}
 local_zip_searches = {}
 local_zip_sessions = {}
+local_scan_cooldowns = {}
 zip_geocode_lock = asyncio.Lock()
 last_zip_geocode_at = 0.0
 
@@ -249,6 +250,7 @@ def ensure_database():
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_visitors (client_id TEXT PRIMARY KEY, first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(), last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_local_zip_searches (id TEXT PRIMARY KEY, client_id TEXT NOT NULL, searched_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_local_zip_sessions (id TEXT PRIMARY KEY, client_id TEXT NOT NULL, zip_hash TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL)")
+            cursor.execute("CREATE TABLE IF NOT EXISTS radar_local_scan_cooldowns (client_id TEXT PRIMARY KEY, last_scanned TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_catalog_products (canonical_key TEXT PRIMARY KEY, retailer TEXT NOT NULL, retailer_product_id TEXT NOT NULL, payload JSONB NOT NULL, first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_monitor_state (product_id TEXT PRIMARY KEY, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_inventory_observations (id TEXT PRIMARY KEY, product_id TEXT NOT NULL, payload JSONB NOT NULL, observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
@@ -1473,7 +1475,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="TCG Radar API",
-    version="3.5.5",
+    version="3.5.6",
     lifespan=lifespan,
 )
 
@@ -1493,7 +1495,7 @@ app.add_middleware(
 async def root():
     return {
         "name": "TCG Radar",
-        "version": "3.5.5",
+        "version": "3.5.6",
         "status": "online",
         "message": "TCG Radar backend is running.",
     }
@@ -1505,7 +1507,7 @@ async def health():
 
     return {
         "status": "online",
-        "version": "3.5.5",
+        "version": "3.5.6",
         "time": now_iso(),
         "configured_products": len(
             sources
@@ -1593,6 +1595,31 @@ def _start_local_zip_session(client_id, zip_code, is_manager):
     return session_id, 2 - len(recent)
 
 
+def _enforce_local_scan_cooldown(client_id):
+    if not client_id:
+        raise HTTPException(status_code=422, detail="This device needs a local search ID; refresh and try again")
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """INSERT INTO radar_local_scan_cooldowns (client_id, last_scanned)
+                    VALUES (%s, NOW())
+                    ON CONFLICT (client_id) DO UPDATE SET last_scanned = EXCLUDED.last_scanned
+                    WHERE radar_local_scan_cooldowns.last_scanned <= NOW() - INTERVAL '30 seconds'
+                    RETURNING last_scanned""",
+                    (client_id,),
+                )
+                allowed = cursor.fetchone() is not None
+            connection.commit()
+        if not allowed:
+            raise HTTPException(status_code=429, detail="Nearby scans can be refreshed every 30 seconds", headers={"Retry-After": "30"})
+        return
+    now = time.monotonic()
+    if now - local_scan_cooldowns.get(client_id, 0) < 30:
+        raise HTTPException(status_code=429, detail="Nearby scans can be refreshed every 30 seconds", headers={"Retry-After": "30"})
+    local_scan_cooldowns[client_id] = now
+
+
 async def _coordinates_for_zip(zip_code):
     global last_zip_geocode_at
     async with zip_geocode_lock:
@@ -1634,6 +1661,7 @@ async def local_scan(payload: dict, authorization: str = Header(default="")):
         raise HTTPException(status_code=422, detail="Choose a 5, 10, 20, or 50 mile radius")
     if http_client is None:
         raise HTTPException(status_code=503, detail="Local Radar is starting; try again shortly")
+    _enforce_local_scan_cooldown(client_id)
 
     role = _manager_role_or_none(authorization)
     is_manager = role in {"owner", "moderator"}
