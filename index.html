@@ -356,9 +356,10 @@
           <button type="submit">Save owner nickname</button>
         </form>
         <form id="moderatorForm" class="product-form">
-          <h3>Moderator roster</h3>
-          <p class="muted">Each nickname is public and can only belong to one person.</p>
-          <div class="form-grid"><input id="moderatorName" required maxlength="24" autocomplete="nickname" placeholder="Unique moderator nickname" /><input id="moderatorPin" required type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="20" pattern="[0-9]{4,20}" placeholder="Temporary 4–20 digit PIN" /><button type="submit">Add moderator</button></div>
+          <h3>Moderator invite</h3>
+          <p class="muted">Creates a private, one-use setup link that expires in 10 minutes. They are not a moderator until they finish setup.</p>
+          <div class="form-grid"><input id="moderatorName" required maxlength="24" autocomplete="nickname" placeholder="Unique moderator nickname" /><input id="moderatorPin" required type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="20" pattern="[0-9]{4,20}" placeholder="Temporary 4–20 digit PIN" /><button type="submit">Create invite</button></div>
+          <div id="moderatorInviteResult" class="link-test-result" hidden></div>
         </form>
         <div id="moderatorList" class="owner-products"></div>
         </details>
@@ -389,6 +390,18 @@
         </div>
         <div id="ownerProducts" class="owner-products"></div></details>
     </div>
+  </dialog>
+
+  <dialog id="moderatorInviteDialog" class="confirm-dialog">
+    <form id="moderatorInviteRedeemForm" class="product-form" method="dialog">
+      <div class="eyebrow">MODERATOR INVITE</div>
+      <h2>Set up manager access</h2>
+      <p id="moderatorInviteMessage">Checking your private invite…</p>
+      <input id="inviteCurrentPin" required type="password" inputmode="numeric" autocomplete="current-password" minlength="4" maxlength="20" pattern="[0-9]{4,20}" placeholder="Temporary PIN" />
+      <input id="inviteNewPin" required type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="20" pattern="[0-9]{4,20}" placeholder="New PIN (4–20 numbers)" />
+      <input id="inviteConfirmPin" required type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="20" pattern="[0-9]{4,20}" placeholder="Re-enter new PIN" />
+      <div class="dialog-actions"><button id="cancelModeratorInvite" type="button" class="secondary">Cancel</button><button id="redeemModeratorInvite" type="submit">Finish setup</button></div>
+    </form>
   </dialog>
 
   <dialog id="whyAlertDialog" class="confirm-dialog">
