@@ -34,8 +34,9 @@ VAPID_CONTACT = os.environ.get("TCG_RADAR_VAPID_CONTACT", "mailto:owner@example.
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", os.environ.get("TCG_RADAR_GOOGLE_CLIENT_ID", ""))
 OWNER_EMAIL = os.environ.get("TCG_RADAR_OWNER_EMAIL", "").strip().lower()
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
-BEST_BUY_DISCOVERY_ENABLED = os.environ.get("TCG_RADAR_BEST_BUY_DISCOVERY_ENABLED", "").strip().lower() in {"1", "true", "yes"}
+BEST_BUY_DISCOVERY_ENABLED = os.environ.get("TCG_RADAR_BEST_BUY_DISCOVERY_ENABLED", "true").strip().lower() in {"1", "true", "yes"}
 DISCOVERY_INTERVAL_SECONDS = max(3600, int(os.environ.get("TCG_RADAR_DISCOVERY_INTERVAL_SECONDS", "21600")))
+DISCOVERY_MAX_PUBLIC_VERIFICATIONS = max(1, min(20, int(os.environ.get("TCG_RADAR_DISCOVERY_MAX_PUBLIC_VERIFICATIONS", "12"))))
 LOCAL_STORE_SEARCH_URL = "https://overpass-api.de/api/interpreter"
 ZIP_GEOCODE_URL = "https://nominatim.openstreetmap.org/search"
 LOCAL_SUPPORTED_RETAILERS = {
@@ -380,18 +381,55 @@ def _write_discovery_run(run):
         connection.commit()
 
 
-async def discover_best_buy_products():
-    """Discover only public category/search links; candidates stay reviewable."""
+async def _verify_and_begin_monitoring(candidate, adapter):
+    """Use one ordinary public product-page check before monitoring a discovery."""
+    product_url = str(candidate.get("product_url", "")).strip()
+    if not verified_product_url(product_url):
+        return None
+    response = await http_client.get(product_url, headers={"User-Agent": USER_AGENT, "Accept": "text/html"}, timeout=20)
+    if response.status_code != 200:
+        raise RuntimeError(f"HTTP {response.status_code}")
+    observation = adapter.check_inventory(response.text, product_url)
+    # A public listing alone is not enough. The seller must be explicitly
+    # identified as the retailer before it can enter the monitored source list.
+    if observation.first_party_seller is not True:
+        return None
+    source = _clean_source({
+        "product": candidate.get("title"),
+        "url": product_url,
+        "game": candidate.get("tcg", "Pokemon"),
+        "store": candidate.get("retailer", "Best Buy"),
+        "set_name": candidate.get("set_name", ""),
+        "catalog_key": candidate.get("canonical_key", ""),
+        "product_type": candidate.get("product_type", "other_pack_product"),
+        "priority": "normal",
+        "area": "Online",
+    })
+    candidate.update({
+        "discovery_status": "monitoring",
+        "public_status": observation.status,
+        "public_price": observation.price,
+        "public_seller": observation.seller,
+        "first_party_seller": True,
+        "verified_at": now_iso(),
+    })
+    return source
+
+
+async def discover_best_buy_products(allow_disabled=False):
+    """Discover public listings, then verify first-party evidence before monitoring."""
     run = {
         "id": secrets.token_urlsafe(12),
         "retailer": "Best Buy",
         "started_at": now_iso(),
         "discovered": 0,
         "stored": 0,
+        "verified": 0,
+        "monitoring_started": 0,
         "status": "skipped",
         "errors": [],
     }
-    if not BEST_BUY_DISCOVERY_ENABLED:
+    if not BEST_BUY_DISCOVERY_ENABLED and not allow_disabled:
         run["reason"] = "TCG_RADAR_BEST_BUY_DISCOVERY_ENABLED is not enabled"
         return run
     if not database_enabled():
@@ -402,6 +440,7 @@ async def discover_best_buy_products():
         run["reason"] = "Best Buy discovery adapter is unavailable"
         return run
     run["status"] = "success"
+    candidates_by_key = {}
     for source_url in BEST_BUY_DISCOVERY_URLS:
         try:
             response = await http_client.get(source_url, headers={"User-Agent": USER_AGENT, "Accept": "text/html"}, timeout=20)
@@ -410,10 +449,8 @@ async def discover_best_buy_products():
             candidates = adapter.discover_products(response.text, source_url)
             run["discovered"] += len(candidates)
             for candidate in candidates:
-                # These catalog entries are deliberately not added to
-                # radar_products yet. A product page must separately establish
-                # direct seller/availability evidence before monitoring starts.
                 payload = candidate.to_dict() | {"discovery_status": "pending_verification"}
+                candidates_by_key[payload["canonical_key"]] = payload
                 if upsert_catalog_product(payload):
                     run["stored"] += 1
             mark_success("Best Buy", response.status_code)
@@ -422,10 +459,30 @@ async def discover_best_buy_products():
             run["errors"].append(f"{source_url}: {type(exc).__name__}: {exc}")
             mark_failure("Best Buy", str(exc))
         await asyncio.sleep(2)
+
+    sources = _all_sources()
+    known = {canonical_product_key(source) for source in sources}
+    for candidate in list(candidates_by_key.values())[:DISCOVERY_MAX_PUBLIC_VERIFICATIONS]:
+        try:
+            source = await _verify_and_begin_monitoring(candidate, adapter)
+            if source:
+                run["verified"] += 1
+                if canonical_product_key(source) not in known:
+                    sources.append(source)
+                    known.add(canonical_product_key(source))
+                    run["monitoring_started"] += 1
+                upsert_catalog_product(candidate)
+            await asyncio.sleep(1.5)
+        except Exception as exc:
+            candidate["discovery_status"] = "pending_verification"
+            candidate["verification_error"] = f"{type(exc).__name__}: {exc}"
+            upsert_catalog_product(candidate)
+            run["errors"].append(f"{candidate.get('title', 'candidate')}: {type(exc).__name__}: {exc}")
+    if run["monitoring_started"]:
+        _write_sources(sources)
     run["completed_at"] = now_iso()
     _write_discovery_run(run)
     return run
-
 
 async def maybe_run_discovery():
     if not BEST_BUY_DISCOVERY_ENABLED:
@@ -1487,7 +1544,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="TCG Radar API",
-    version="3.5.7",
+    version="3.6.0",
     lifespan=lifespan,
 )
 
@@ -1507,7 +1564,7 @@ app.add_middleware(
 async def root():
     return {
         "name": "TCG Radar",
-        "version": "3.5.7",
+        "version": "3.6.0",
         "status": "online",
         "message": "TCG Radar backend is running.",
     }
@@ -1519,7 +1576,7 @@ async def health():
 
     return {
         "status": "online",
-        "version": "3.5.7",
+        "version": "3.6.0",
         "time": now_iso(),
         "configured_products": len(
             sources
@@ -1884,6 +1941,12 @@ async def create_help_message(payload: dict):
 async def admin_status(authorization: str = Header(default="")):
     require_admin(authorization)
     return {"configured": True, "storage": str(SOURCES_FILE.name), "persistent_volume_required": "RAILWAY_VOLUME_MOUNT_PATH" not in os.environ}
+
+@app.post("/api/admin/discovery/run")
+async def run_public_discovery(authorization: str = Header(default="")):
+    require_admin(authorization)
+    return await discover_best_buy_products(allow_disabled=True)
+
 
 @app.get("/api/admin/discovery")
 async def admin_discovery(authorization: str = Header(default="")):
