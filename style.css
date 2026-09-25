@@ -245,3 +245,12 @@ body:before{right:50%;bottom:12vh;transform:translateX(50%);width:min(82vw,460px
 #nicknameForm{margin-top:4px}
 #nicknameForm small{display:block;margin-top:-6px}
 #accountDialog:has(#nicknameForm:not([hidden])),#accountDialog:has(#nicknameForm:not([hidden])) .account-dialog-card{height:374px;min-height:374px}
+
+
+/* Keep Command Center status compact on phones. */
+@media(max-width:600px){
+  .admin-overview{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:12px 0}
+  .admin-overview div{padding:9px 7px;border-radius:11px;min-width:0}
+  .admin-overview small{font-size:.64rem;line-height:1.15;overflow-wrap:anywhere}
+  .admin-overview strong{font-size:.7rem;line-height:1.2;overflow-wrap:anywhere}
+}
