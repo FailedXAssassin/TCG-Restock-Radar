@@ -2,6 +2,9 @@
 const $ = s => document.querySelector(s);
 let rows = [];
 const WATCHLIST_KEY="tcg-radar-watchlist";
+const SAVED_FILTERS_KEY="tcg-radar-personal-filters";
+const DROP_NOTES_KEY="tcg-radar-drop-notes";
+const BACKUP_KEYS=[WATCHLIST_KEY,SAVED_FILTERS_KEY,DROP_NOTES_KEY,"tcg-radar-alert-games","tcg-radar-alert-stores","tcg-radar-personal-markup","tcg-radar-quiet-hours","tcg-radar-muted-products","tcg-radar-muted-stores","tcg-radar-third-party-alerts"];
 const RETAILER_SELECTION_KEY="tcg-radar-retailer-selection";
 const SORT_MODE_KEY="tcg-radar-sort-mode";
 const ALERT_VISIBLE_MS=30*60*1000;
@@ -16,6 +19,9 @@ function readFilters(){return Object.fromEntries(FILTER_IDS.map(id=>[id,$("#"+id
 function setFilters(values){FILTER_IDS.forEach(id=>{$("#"+id).value=values[id]??"";});}
 function watchlist(){try{return new Set(JSON.parse(localStorage.getItem(WATCHLIST_KEY)||"[]"));}catch(_){return new Set();}}
 function saveWatchlist(items){localStorage.setItem(WATCHLIST_KEY,JSON.stringify([...items]));}
+function dropNotes(){try{const value=JSON.parse(localStorage.getItem(DROP_NOTES_KEY)||"{}");return value&&typeof value==="object"?value:{};}catch(_){return {};}}
+function saveDropNote(key,note){const notes=dropNotes();if(note)notes[key]=note;else delete notes[key];localStorage.setItem(DROP_NOTES_KEY,JSON.stringify(notes));}
+function savedFilters(){try{const value=JSON.parse(localStorage.getItem(SAVED_FILTERS_KEY)||"null");return value&&typeof value==="object"?value:null;}catch(_){return null;}}
 function retailerSelections(){try{const value=JSON.parse(localStorage.getItem(RETAILER_SELECTION_KEY)||"{}");return value&&typeof value==="object"?value:{};}catch(_){return {};}}
 let deferredPrompt = null;
 let viewMode = "online";
@@ -234,6 +240,10 @@ function render(){
     }
     const why=node.querySelector(".why-alert");
     why.onclick=()=>showWhyAlert(item);
+    const noteKey=item.catalog_key||item.id, note=dropNotes()[noteKey]||"";
+    const noteEl=node.querySelector(".personal-note"); noteEl.textContent=note?"Your note: "+note:""; noteEl.hidden=!note;
+    node.querySelector(".drop-note").textContent=note?"Edit note":"Note";
+    node.querySelector(".drop-note").onclick=()=>openDropNote(noteKey,item.product,note);
     const muteItem=node.querySelector(".mute-item");
     const mutedKey=item.catalog_key||item.id;
     muteItem.textContent=mutedProducts().has(mutedKey)?"Unmute item":"Mute item";
@@ -511,10 +521,23 @@ $("#accountQuickBtn").addEventListener("click",()=>accountUser?signOut():openAcc
 $("#signOutBtn").addEventListener("click",signOut);
 $("#purchaseForm").addEventListener("submit",async event=>{event.preventDefault();const item={name:$("#purchaseName").value.trim(),quantity:Math.max(1,Number($("#purchaseQty").value||1)),paid:Number($("#purchasePaid").value||0),retailer:$("#purchaseRetailer").value.trim(),date:$("#purchaseDate").value,notes:$("#purchaseNotes").value.trim()};const response=await fetch(api("/api/purchases"),{method:"POST",headers:{"Content-Type":"application/json",...accountHeaders()},body:JSON.stringify(item)});if(!response.ok){$("#accountStatus").textContent=(await response.json().catch(()=>({}))).detail||"Purchase could not be saved";return;}event.target.reset();$("#purchaseQty").value="1";renderPurchases();});
 
-appliedFilters=readFilters();
+const restoredFilters=savedFilters(); if(restoredFilters){appliedFilters=restoredFilters;setFilters(restoredFilters);}else appliedFilters=readFilters();
 $("#applyFiltersBtn").addEventListener("click",()=>{appliedFilters=readFilters();$(".filter-drawer").open=false;render();});
+$("#saveFiltersBtn").addEventListener("click",()=>{appliedFilters=readFilters();localStorage.setItem(SAVED_FILTERS_KEY,JSON.stringify(appliedFilters));$(".filter-drawer").open=false;render();showActionToast("Your filters were saved on this phone.");});
+$("#resetSavedFiltersBtn").addEventListener("click",()=>{localStorage.removeItem(SAVED_FILTERS_KEY);const defaults={gameFilter:"all",retailerFilter:"all",statusFilter:"all",markupFilter:"200",quantityFilter:"0",searchInput:""};appliedFilters=defaults;setFilters(defaults);render();showActionToast("Saved filters reset.");});
 $("#cancelFiltersBtn").addEventListener("click",()=>{setFilters(appliedFilters);$(".filter-drawer").open=false;});
 $("#refreshBtn").addEventListener("click",loadFeed);
+let activeDropNoteKey="";
+function openDropNote(key,product,note){activeDropNoteKey=key;$("#dropNoteProduct").textContent=product||"This product";$("#dropNoteText").value=note||"";$("#removeDropNoteBtn").hidden=!note;$("#dropNoteDialog").showModal();}
+$("#dropNoteForm").addEventListener("submit",event=>{event.preventDefault();saveDropNote(activeDropNoteKey,$("#dropNoteText").value.trim());$("#dropNoteDialog").close();render();showActionToast("Your note was saved.");});
+$("#removeDropNoteBtn").addEventListener("click",()=>{saveDropNote(activeDropNoteKey,"");$("#dropNoteDialog").close();render();showActionToast("Your note was removed.");});
+function downloadBackup(name,type,body){const url=URL.createObjectURL(new Blob([body],{type}));const link=document.createElement("a");link.href=url;link.download=name;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+function backupPayload(){const data={version:1,exported_at:new Date().toISOString(),data:{}};BACKUP_KEYS.forEach(key=>{const value=localStorage.getItem(key);if(value!==null)data.data[key]=value;});return data;}
+$("#backupBtn").addEventListener("click",()=>{$("#backupMessage").textContent="";$("#restoreBackupFile").value="";$("#backupDialog").showModal();});
+$("#closeBackupBtn").addEventListener("click",()=>$("#backupDialog").close());
+$("#downloadJsonBtn").addEventListener("click",()=>{downloadBackup("tcg-radar-backup.json","application/json",JSON.stringify(backupPayload(),null,2));$("#backupMessage").textContent="Backup downloaded.";});
+$("#downloadCsvBtn").addEventListener("click",()=>{const notes=dropNotes(), watched=[...watchlist()];const lines=["product_id,note",...watched.map(id=>["\""+id+"\"","\""+(notes[id]||"").replaceAll('"','""')+"\""].join(","))];downloadBackup("tcg-radar-watchlist.csv","text/csv",lines.join("\n"));$("#backupMessage").textContent="Watchlist CSV downloaded.";});
+$("#restoreBackupFile").addEventListener("change",event=>{const file=event.target.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=()=>{try{const payload=JSON.parse(String(reader.result||""));if(!payload?.data||typeof payload.data!=="object")throw new Error();BACKUP_KEYS.forEach(key=>{if(typeof payload.data[key]==="string")localStorage.setItem(key,payload.data[key]);});const restored=savedFilters();if(restored){appliedFilters=restored;setFilters(restored);}hydrateAlertChoices();render();$("#backupMessage").textContent="Backup restored on this phone.";showActionToast("Backup restored.");}catch(_){$("#backupMessage").textContent="That file is not a TCG Radar backup.";}};reader.readAsText(file);});
 $("#sortMode").addEventListener("change",event=>{localStorage.setItem(SORT_MODE_KEY,event.target.value);render();});
 const ADMIN_KEY="tcg-radar-manager-secret";
 const PERSISTENT_MANAGER_KEY="tcg-radar-manager-secret-persistent";
