@@ -154,3 +154,7 @@ body:before{right:50%;bottom:12vh;transform:translateX(50%);width:min(82vw,460px
 .stock-estimate{margin:7px 0 0;padding:7px 9px;border:1px solid rgba(255,190,82,.42);border-radius:8px;background:rgba(255,176,64,.09);color:#ffd38a;font-size:.74rem;font-weight:750}
 .alert-row.fresh-alert{border-color:rgba(255,112,67,.85);background:linear-gradient(110deg,rgba(139,49,26,.38),rgba(32,214,210,.06));box-shadow:0 0 16px rgba(255,104,52,.13)}.alert-row.fresh-alert time{color:#ffcf85;font-weight:800}.alert-history-toggle{grid-column:1/-1;margin-top:2px;width:100%;padding:9px 12px}
 @media(max-width:640px){.live-feed-toolbar{padding:11px 12px}.live-feed-label{font-size:.7rem;gap:6px}.sort-control{font-size:.8rem}.sort-control select{min-width:0;width:132px;font-size:.76rem}.alert-history{grid-template-columns:1fr}}
+
+
+/* Owner priority controls */
+.priority-automation{padding:0 14px 14px}.priority-automation .choice-label{font-weight:850}.priority-automation .muted{margin:8px 0 0}.priority-select{min-width:82px;padding:7px 24px 7px 8px;font-size:.78rem;font-weight:800}.priority-select:disabled{opacity:.52;cursor:not-allowed}
