@@ -144,16 +144,65 @@ function setMode(mode){
 
 $("#onlineModeBtn").addEventListener("click",()=>setMode("online"));
 $("#localModeBtn").addEventListener("click",()=>setMode("local"));
+let localSearch=null;
+function localDirections(store){
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${store.latitude},${store.longitude}`)}`;
+}
+function renderLocalScan(data){
+  const list=$("#localResults"); list.innerHTML="";
+  const stores=data.stores||[];
+  if(!stores.length){list.innerHTML='<div class="status card">No supported stores were found inside this radius. Try 20 or 50 miles.</div>';return;}
+  for(const store of stores){
+    const card=document.createElement("article"); card.className="drop card";
+    const main=document.createElement("div"); main.className="drop-main";
+    const tags=document.createElement("div"); tags.className="drop-tags";
+    const retailer=document.createElement("span"); retailer.className="badge game"; retailer.textContent=store.retailer;
+    const local=document.createElement("span"); local.className="badge set"; local.textContent="Local";
+    tags.append(retailer,local);
+    const title=document.createElement("h3"); title.textContent=store.name||store.retailer;
+    const address=document.createElement("p"); address.className="store"; address.textContent=`${store.distance_miles} mi away${store.address?` • ${store.address}`:""}`;
+    const checked=document.createElement("p"); checked.className="checked"; checked.textContent=store.inventory_status==="in_stock"?"🟢 Verified local inventory":`⚪ ${store.inventory_note||"Store inventory unavailable"}`;
+    main.append(tags,title,address,checked);
+    const side=document.createElement("div"); side.className="drop-side";
+    const actions=document.createElement("div"); actions.className="card-actions";
+    const directions=document.createElement("a"); directions.className="buy"; directions.target="_blank"; directions.rel="noopener"; directions.href=localDirections(store); directions.textContent="Directions";
+    actions.append(directions); side.append(actions);
+    card.append(main,side);
+    for(const item of store.items||[]){
+      const detail=document.createElement("p"); detail.className="evidence";
+      detail.textContent=`${item.product||"Product"} • ${item.status||"Unknown"}${item.price!=null?` • ${money(item.price)}`:""}`;
+      card.append(detail);
+    }
+    list.append(card);
+  }
+}
+async function runLocalScan(){
+  const status=$("#locationStatus");
+  if(!localSearch)return;
+  const radius=Number($("#radiusFilter").value);
+  status.textContent=`Finding supported stores within ${radius} miles and checking local inventory…`;
+  $("#localResults").innerHTML='<div class="status card">Scanning nearby supported stores…</div>';
+  try{
+    const response=await fetch(api("/api/local/scan"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({latitude:localSearch.latitude,longitude:localSearch.longitude,radius_miles:radius})});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.detail||`HTTP ${response.status}`);
+    status.textContent=`${data.stores?.length||0} supported store${data.stores?.length===1?"":"s"} found within ${radius} miles. ${data.inventory_scan?.verified_local_inventory||0} have verified automated local inventory.`;
+    renderLocalScan(data);
+  }catch(error){
+    status.textContent=`Nearby search unavailable: ${error.message}`;
+    $("#localResults").innerHTML='<div class="status card">We could not complete a nearby store scan. Nothing was marked in stock.</div>';
+  }
+}
 $("#useLocationBtn").addEventListener("click",()=>{
   const status=$("#locationStatus");
   if(!navigator.geolocation){status.textContent="This browser does not support location services.";return;}
   status.textContent="Requesting your location…";
   navigator.geolocation.getCurrentPosition(position=>{
-    localStorage.setItem("tcg-radar-location",JSON.stringify({latitude:position.coords.latitude,longitude:position.coords.longitude,radius:Number($("#radiusFilter").value),saved_at:new Date().toISOString()}));
-    status.textContent=`Location ready. Searching within ${$("#radiusFilter").value} miles.`;
-    render();
+    localSearch={latitude:position.coords.latitude,longitude:position.coords.longitude};
+    runLocalScan();
   },error=>{status.textContent=error.code===1?"Location permission was denied. You can enable it in Chrome site settings.":"We couldn’t determine your location. Try again.";},{enableHighAccuracy:false,maximumAge:300000,timeout:10000});
 });
+$("#radiusFilter").addEventListener("change",()=>{if(localSearch)runLocalScan();});
 
 async function loadFeed(){
   $("#statusBox").textContent="Checking latest feed…";
