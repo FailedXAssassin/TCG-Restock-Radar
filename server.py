@@ -152,6 +152,28 @@ VERIFIED_PRODUCT_PATHS = {
 }
 
 
+def canonical_product_url(url):
+    """Remove affiliate/tracking data while preserving the official product page."""
+    try:
+        parsed = urlparse(str(url).strip())
+        host = parsed.netloc.lower().split("@")[-1].split(":")[0]
+        if host.startswith("www."):
+            host = host[4:]
+        path = parsed.path or "/"
+
+        # Target's "moo" URL is an affiliate-facing variant of the same A-number page.
+        if host == "target.com":
+            target_match = re.search(r"/A-(\\d+)$", path, re.I)
+            if target_match:
+                path = f"/p/-/A-{target_match.group(1)}"
+
+        # Retailer product pages do not need query strings; these commonly carry
+        # affiliate, click, campaign, and session parameters.
+        return f"https://www.{host}{path}" if host else ""
+    except Exception:
+        return ""
+
+
 def verified_product_url(url):
     """Accept only stable official retailer product pages."""
     try:
@@ -563,7 +585,7 @@ CATALOG_PRODUCT_TYPES = {
 def _clean_source(payload):
     if not isinstance(payload, dict):
         raise HTTPException(status_code=422, detail="Product data must be an object")
-    url = str(payload.get("url", "")).strip()
+    url = canonical_product_url(payload.get("url", ""))
     if not verified_product_url(url):
         raise HTTPException(
             status_code=422,
