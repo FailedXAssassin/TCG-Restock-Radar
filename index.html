@@ -157,6 +157,7 @@
     <section data-page="radar" class="feed-heading"><div><div class="eyebrow">RADAR ACTIVITY</div><h2>Latest notifications</h2><p>Meaningful restock movement, newest first.</p></div><button id="statusHelpBtn" type="button" class="badge">What do these mean?</button></section>
     <section data-page="alerts" class="page-heading"><div class="eyebrow">ALERT HISTORY</div><h2>Your latest drops</h2><p>Only meaningful restock movement is saved here.</p></section>
     <section data-page="alerts" class="alerts-panel card"><div class="alerts-title"><h3>Notification history</h3><small>Saved alerts from meaningful status changes</small></div><div id="alertHistory" class="alert-history"><small>No notifications recorded yet.</small></div></section>
+    <section data-page="alerts" class="alerts-panel card"><div class="alerts-title"><h3>Recently missed</h3><small>Confirmed drops that are now sold out</small></div><div id="recentlyMissed" class="alert-history"><small>Checking recently missed drops…</small></div></section>
     <section id="results" data-page="radar" class="grid"></section>
     <section id="healthSection" data-page="radar" class="health-section" hidden>
       <h2>Retailer health</h2>
@@ -210,6 +211,8 @@
         <option value="200">200% or less above MSRP</option>
         <option value="999">Any confirmed price</option>
       </select>
+      <label class="settings-toggle"><input id="quietHoursEnabled" type="checkbox" /> <span><strong>Quiet hours</strong><small>Keep alerts in history, but do not send push notifications.</small></span></label>
+      <div id="quietHoursFields" class="form-grid" hidden><label>Start<select id="quietStart"><option value="1200">8:00 PM</option><option value="1260">9:00 PM</option><option value="1320" selected>10:00 PM</option><option value="1380">11:00 PM</option></select></label><label>End<select id="quietEnd"><option value="360">6:00 AM</option><option value="420">7:00 AM</option><option value="480" selected>8:00 AM</option><option value="540">9:00 AM</option></select></label></div>
       <p id="alertSettingsMessage" class="muted"></p>
       <div class="dialog-actions"><button id="saveAlertSettingsBtn" value="default">Save alert settings</button></div>
     </form>
