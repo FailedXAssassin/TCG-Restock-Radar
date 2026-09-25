@@ -1651,9 +1651,8 @@ async def health():
         "configured_products": len(
             sources
         ),
-        "tracked_products": len(
-            products
-        ),
+        "tracked_products": len(sources),
+        "checked_products": len(products),
         "retailers": len(
             retailer_health
         ),
@@ -1856,11 +1855,63 @@ out center tags;"""
     }
 
 
+def _feed_item_for_source(source: dict) -> dict:
+    """Expose every enabled tracker before its first scheduled check completes."""
+    product_key = source_id(source)
+    current = products.get(product_key)
+    if current:
+        return current
+
+    store = retailer_name(source["url"], source.get("store", "Unknown"))
+    return {
+        "id": product_key,
+        "game": source.get("game", source.get("category", "Other")),
+        "category": source.get("category", source.get("game", "Other")),
+        "area": source.get("area", "Online"),
+        "set_name": source.get("set_name", ""),
+        "catalog_key": source.get("catalog_key", ""),
+        "product_type": source.get("product_type", "other_pack_product"),
+        "packs": source.get("packs"),
+        **_stock_estimate_fields(source),
+        "store": store,
+        "product": source.get("product", "Unnamed product"),
+        "url": source["url"],
+        "status": "unknown",
+        "previous_status": None,
+        "status_changed": False,
+        "restock_armed": False,
+        "restock_session": 0,
+        "in_stock_streak": 0,
+        "marketplace_streak": 0,
+        "live_alerted": False,
+        "marketplace_alerted": False,
+        "restock_confirmed": False,
+        "official_seller_verified": False,
+        "price": None,
+        "msrp": safe_float(source.get("msrp")),
+        "markup": None,
+        "quantity": None,
+        "image_url": str(source.get("image_url", "")).strip(),
+        "priority": source.get("priority", "normal"),
+        "max_markup": safe_float(source.get("max_markup"), 80),
+        "base_interval_seconds": interval_for(source),
+        "checked_at": None,
+        "first_seen_at": None,
+        "notification_at": None,
+        "response_ms": None,
+        "http_status": None,
+        "seller": "",
+        "parser_version": None,
+        "evidence": "Tracker is queued for its first safe retailer check.",
+    }
+
+
 @app.get("/api/feed")
 async def feed():
-    items = list(
-        products.values()
-    )
+    items = [
+        _feed_item_for_source(source)
+        for source in load_sources()
+    ]
 
     # Keep recent activity first within each inventory class, then place verified
     # retailer-direct offers ahead of marketplace offers. Marketplace ordering
