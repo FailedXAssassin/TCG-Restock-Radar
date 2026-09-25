@@ -267,3 +267,8 @@ body:before{right:50%;bottom:12vh;transform:translateX(50%);width:min(82vw,460px
   animation:owner-rainbow 5s linear infinite;
 }
 .account-owner-status{display:inline-block}
+
+
+/* Alert receipt: brief, factual reasons for an eligible drop. */
+.alert-receipt-intro{margin:0 0 12px;color:#c7bdcf;font-size:.86rem}
+.alert-receipt{display:grid;gap:8px}.alert-receipt p{margin:0;padding:10px 11px;border:1px solid rgba(171,143,203,.25);border-radius:11px;background:rgba(255,255,255,.045);color:#e8e0ee;font-size:.84rem}
