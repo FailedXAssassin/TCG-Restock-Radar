@@ -27,6 +27,7 @@ SOURCES_FILE = Path(os.environ.get("TCG_RADAR_DATA_PATH", DATA_DIR / "sources.js
 PUSH_SUBSCRIPTIONS_FILE = Path(os.environ.get("TCG_RADAR_PUSH_SUBSCRIPTIONS_PATH", DATA_DIR / "push_subscriptions.json"))
 MODERATORS_FILE = Path(os.environ.get("TCG_RADAR_MODERATORS_PATH", DATA_DIR / "moderators.json"))
 ALERT_HISTORY_FILE = Path(os.environ.get("TCG_RADAR_ALERT_HISTORY_PATH", DATA_DIR / "alert_history.json"))
+PRIORITY_AUTOMATION_FILE = Path(os.environ.get("TCG_RADAR_PRIORITY_AUTOMATION_PATH", DATA_DIR / "priority_automation.json"))
 ADMIN_SECRET = os.environ.get("TCG_RADAR_ADMIN_SECRET", "")
 VAPID_PUBLIC_KEY = os.environ.get("TCG_RADAR_VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = os.environ.get("TCG_RADAR_VAPID_PRIVATE_KEY", "")
@@ -65,6 +66,14 @@ USER_AGENT = (
 # We will replace this with persistent storage after Railway is confirmed working.
 products = {}
 retailer_health = {}
+DEFAULT_PRIORITY_AUTOMATION = {
+    "auto_high_priority": False,
+    "top_limit": 20,
+    "trend_source": "not_configured",
+    "auto_selected_product_ids": [],
+    "updated_at": None,
+}
+priority_automation = dict(DEFAULT_PRIORITY_AUTOMATION)
 
 # A restock must be observed twice after the product has first been seen
 # in a non-purchasable state. This avoids a single bad page response becoming
@@ -190,6 +199,17 @@ def verified_product_url(url):
         return False
 
 
+def priority_for(source):
+    """Manual priority now; auto-selected IDs become high when a source is configured."""
+    source_priority = str(source.get("priority", "normal")).lower()
+    if source_priority not in {"high", "normal", "low"}:
+        source_priority = "normal"
+    auto_ids = set(priority_automation.get("auto_selected_product_ids") or [])
+    if priority_automation.get("auto_high_priority") and source_id(source) in auto_ids:
+        return "high"
+    return source_priority
+
+
 def interval_for(source):
     """
     High priority:
@@ -203,9 +223,7 @@ def interval_for(source):
     so one retailer is not hit all at once.
     """
 
-    priority = str(
-        source.get("priority", "normal")
-    ).lower()
+    priority = priority_for(source)
 
     if priority == "high":
         low, high = 30, 60
@@ -281,6 +299,7 @@ def ensure_database():
             cursor.execute("CREATE INDEX IF NOT EXISTS radar_inventory_observations_product_time ON radar_inventory_observations (product_id, observed_at DESC)")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_discovery_runs (id TEXT PRIMARY KEY, retailer TEXT NOT NULL, payload JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_adapter_health (retailer TEXT PRIMARY KEY, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cursor.execute("CREATE TABLE IF NOT EXISTS radar_settings (key TEXT PRIMARY KEY, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             # Add new checked-in starter products without overwriting products
             # added by the owner or moderators.
             for source in _file_sources():
@@ -556,6 +575,61 @@ def _write_sources(sources):
     temporary = SOURCES_FILE.with_suffix(".tmp")
     temporary.write_text(json.dumps(sources, indent=2) + "\n", encoding="utf-8")
     temporary.replace(SOURCES_FILE)
+
+
+def _normalize_priority_automation(payload):
+    source = payload if isinstance(payload, dict) else {}
+    selected = [
+        str(item).strip()
+        for item in source.get("auto_selected_product_ids", [])
+        if str(item).strip()
+    ][:20]
+    return {
+        "auto_high_priority": bool(source.get("auto_high_priority", False)),
+        "top_limit": 20,
+        "trend_source": str(source.get("trend_source") or "not_configured")[:80],
+        "auto_selected_product_ids": selected,
+        "updated_at": source.get("updated_at"),
+    }
+
+
+def load_priority_automation():
+    global priority_automation
+    payload = None
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT payload FROM radar_settings WHERE key = %s", ("priority_automation",))
+                row = cursor.fetchone()
+                payload = row[0] if row else None
+    elif PRIORITY_AUTOMATION_FILE.exists():
+        try:
+            payload = json.loads(PRIORITY_AUTOMATION_FILE.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            payload = None
+    priority_automation = _normalize_priority_automation(payload or DEFAULT_PRIORITY_AUTOMATION)
+    return dict(priority_automation)
+
+
+def write_priority_automation(payload):
+    global priority_automation
+    priority_automation = _normalize_priority_automation(payload)
+    priority_automation["updated_at"] = now_iso()
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO radar_settings (key, payload) VALUES (%s, %s::jsonb) "
+                    "ON CONFLICT (key) DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()",
+                    ("priority_automation", json.dumps(priority_automation)),
+                )
+            connection.commit()
+    else:
+        PRIORITY_AUTOMATION_FILE.parent.mkdir(parents=True, exist_ok=True)
+        temporary = PRIORITY_AUTOMATION_FILE.with_suffix(".tmp")
+        temporary.write_text(json.dumps(priority_automation, indent=2) + "\n", encoding="utf-8")
+        temporary.replace(PRIORITY_AUTOMATION_FILE)
+    return dict(priority_automation)
 
 
 CATALOG_PRODUCT_TYPES = {
@@ -1543,7 +1617,7 @@ async def scheduler():
         ):
             high_priority = [
                 source for source in sources
-                if str(source.get("priority", "normal")).lower() == "high"
+                if priority_for(source) == "high"
             ]
             random.shuffle(high_priority)
             for index, source in enumerate(high_priority):
@@ -1574,7 +1648,7 @@ async def scheduler():
             source = min(
                 due_by_retailer[store],
                 key=lambda item: priority_rank.get(
-                    str(item.get("priority", "normal")).lower(), 1
+                    priority_for(item), 1
                 ),
             )
             selected.append((store, source))
@@ -1602,6 +1676,7 @@ async def lifespan(app: FastAPI):
 
     ensure_data_files()
     ensure_database()
+    load_priority_automation()
     http_client = httpx.AsyncClient(
         follow_redirects=True,
     )
@@ -2238,6 +2313,23 @@ async def reject_catalog_product(canonical_key: str, authorization: str = Header
     candidate["rejected_at"] = now_iso()
     upsert_catalog_product(candidate)
     return {"rejected": True}
+
+
+@app.get("/api/admin/priority-automation")
+async def get_priority_automation(authorization: str = Header(default="")):
+    role = require_product_manager(authorization)
+    return {**priority_automation, "role": role}
+
+
+@app.patch("/api/admin/priority-automation")
+async def update_priority_automation(payload: dict, authorization: str = Header(default="")):
+    require_admin(authorization)
+    if "auto_high_priority" not in payload:
+        raise HTTPException(status_code=422, detail="Provide the auto high priority setting")
+    return write_priority_automation({
+        **priority_automation,
+        "auto_high_priority": bool(payload.get("auto_high_priority")),
+    })
 
 
 @app.get("/api/admin/products")
