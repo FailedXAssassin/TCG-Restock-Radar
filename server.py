@@ -288,7 +288,9 @@ def ensure_database():
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_alert_events (id TEXT PRIMARY KEY, product_id TEXT NOT NULL, payload JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_support_messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, client_id TEXT NOT NULL, sender TEXT NOT NULL, body TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_support_bans (client_id TEXT PRIMARY KEY, reason TEXT NOT NULL DEFAULT 'Spam', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
-            cursor.execute("CREATE TABLE IF NOT EXISTS radar_users (google_sub TEXT PRIMARY KEY, email TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cursor.execute("CREATE TABLE IF NOT EXISTS radar_users (google_sub TEXT PRIMARY KEY, email TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', nickname TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cursor.execute("ALTER TABLE radar_users ADD COLUMN IF NOT EXISTS nickname TEXT")
+            cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS radar_users_nickname_unique ON radar_users (LOWER(nickname)) WHERE nickname IS NOT NULL")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_purchases (id TEXT PRIMARY KEY, google_sub TEXT NOT NULL, payload JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_visitors (client_id TEXT PRIMARY KEY, first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(), last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_retailer_link_clicks (retailer TEXT PRIMARY KEY, clicks BIGINT NOT NULL DEFAULT 0, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
@@ -773,6 +775,7 @@ def clean_image_url(value):
 
 
 PIN_PATTERN = re.compile(r"^\d{4,20}$")
+NICKNAME_PATTERN = re.compile(r"^[A-Za-z0-9 _-]{2,24}$")
 
 
 def _token_hash(token):
@@ -818,6 +821,37 @@ def _write_owner_pin_hash(pin_hash):
     temporary = OWNER_PIN_FILE.with_suffix(".tmp")
     temporary.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     temporary.replace(OWNER_PIN_FILE)
+
+
+def _nickname(value):
+    nickname = str(value or "").strip()
+    if not NICKNAME_PATTERN.fullmatch(nickname):
+        raise HTTPException(status_code=422, detail="Nickname must be 2–24 characters: letters, numbers, spaces, _ or -")
+    return nickname
+
+
+def _nickname_taken(nickname, exclude_google_sub="", exclude_moderator_id=""):
+    folded = nickname.casefold()
+    for moderator in _moderators():
+        if moderator.get("id") != exclude_moderator_id and str(moderator.get("name", "")).casefold() == folded:
+            return True
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1 FROM radar_users WHERE LOWER(nickname) = LOWER(%s) AND google_sub <> %s", (nickname, exclude_google_sub))
+                return cursor.fetchone() is not None
+    return False
+
+
+def _owner_nickname():
+    if database_enabled() and OWNER_EMAIL:
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT nickname FROM radar_users WHERE LOWER(email) = LOWER(%s)", (OWNER_EMAIL,))
+                row = cursor.fetchone()
+        if row and row[0]:
+            return str(row[0])
+    return "Owner"
 
 
 def _is_google_owner(authorization):
@@ -1096,7 +1130,12 @@ def google_user(authorization):
         with _database_connection() as connection:
             with connection.cursor() as cursor:
                 cursor.execute("INSERT INTO radar_users (google_sub, email, name) VALUES (%s, %s, %s) ON CONFLICT (google_sub) DO UPDATE SET email = EXCLUDED.email, name = EXCLUDED.name, updated_at = NOW()", (user["google_sub"], user["email"], user["name"]))
+                cursor.execute("SELECT nickname FROM radar_users WHERE google_sub = %s", (user["google_sub"],))
+                row = cursor.fetchone()
             connection.commit()
+        user["nickname"] = str(row[0] or "") if row else ""
+    else:
+        user["nickname"] = ""
     return user
 
 
@@ -2767,15 +2806,40 @@ async def set_owner_pin(payload: dict, authorization: str = Header(default="")):
 @app.get("/api/admin/moderators")
 async def list_moderators(authorization: str = Header(default="")):
     require_admin(authorization)
-    return {"items": [{"id": moderator["id"], "name": moderator["name"], "created_at": moderator.get("created_at")} for moderator in _moderators()]}
+    return {
+        "owner_nickname": _owner_nickname(),
+        "items": [{"id": moderator["id"], "nickname": moderator["name"], "created_at": moderator.get("created_at")} for moderator in _moderators()],
+    }
+
+
+@app.put("/api/profile/nickname")
+async def set_public_nickname(payload: dict, authorization: str = Header(default="")):
+    user = google_user(authorization)
+    if not database_enabled():
+        raise HTTPException(status_code=503, detail="Nickname storage is not available")
+    nickname = _nickname(payload.get("nickname"))
+    if _nickname_taken(nickname, exclude_google_sub=user["google_sub"]):
+        raise HTTPException(status_code=409, detail="That nickname is already taken")
+    with _database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("UPDATE radar_users SET nickname = %s, updated_at = NOW() WHERE google_sub = %s", (nickname, user["google_sub"]))
+        connection.commit()
+    user["nickname"] = nickname
+    return {"nickname": nickname}
+
+
+@app.get("/api/profile/nickname")
+async def get_public_nickname(authorization: str = Header(default="")):
+    user = google_user(authorization)
+    return {"nickname": user.get("nickname", "")}
 
 
 @app.post("/api/admin/moderators", status_code=201)
 async def add_moderator(payload: dict, authorization: str = Header(default="")):
     require_admin(authorization)
-    name = str(payload.get("name", "")).strip()
-    if not 2 <= len(name) <= 60:
-        raise HTTPException(status_code=422, detail="Moderator name must be 2 to 60 characters")
+    name = _nickname(payload.get("nickname", payload.get("name", "")))
+    if _nickname_taken(name):
+        raise HTTPException(status_code=409, detail="That nickname is already taken")
     access_code = str(payload.get("access_code", "")).strip()
     if not PIN_PATTERN.fullmatch(access_code):
         raise HTTPException(status_code=422, detail="Moderator PIN must be 4 to 20 numbers")
@@ -2783,7 +2847,7 @@ async def add_moderator(payload: dict, authorization: str = Header(default="")):
     moderators = _moderators()
     moderators.append(moderator)
     _write_moderators(moderators)
-    return {"id": moderator["id"], "name": name, "access_code": access_code}
+    return {"id": moderator["id"], "nickname": name, "access_code": access_code}
 
 
 @app.delete("/api/admin/moderators/{moderator_id}", status_code=204)
