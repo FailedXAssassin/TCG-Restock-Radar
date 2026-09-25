@@ -1348,7 +1348,7 @@ async def fetch_pokemon_center_image(product_name):
         )
         if search.status_code != 200:
             return None
-        paths = re.findall(r'href=["\\'](/product/[^"\\'#?]+)', search.text, re.I)
+        paths = re.findall(r"href=['\"](/product/[^'\"#?]+)", search.text, re.I)
         seen = set()
         for path in paths[:8]:
             if path in seen:
