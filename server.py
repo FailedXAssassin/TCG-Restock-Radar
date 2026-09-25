@@ -746,6 +746,7 @@ def _clean_source(payload):
         "catalog_key": str(payload.get("catalog_key", "")).strip().lower()[:160],
         "product_type": product_type,
         "packs": packs,
+        "image_url": clean_image_url(payload.get("image_url", "")),
         **_stock_estimate_fields(payload),
         "official_seller_only": True,
     }
@@ -756,6 +757,16 @@ def monitored_product_key(source):
     retailer = retailer_name(str(source.get("url", "")), str(source.get("store", ""))).casefold()
     title = re.sub(r"[^a-z0-9]+", " ", str(source.get("product", "")).casefold()).strip()
     return f"{retailer}|{title}"
+
+
+def clean_image_url(value):
+    image_url = str(value or "").strip()
+    if not image_url:
+        return ""
+    parsed = urlparse(image_url)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise HTTPException(status_code=422, detail="Image override must be a secure HTTPS URL")
+    return image_url
 
 
 def require_admin(authorization=Header(default="")):
@@ -2370,10 +2381,11 @@ async def admin_products(authorization: str = Header(default="")):
 async def add_product(payload: dict, authorization: str = Header(default="")):
     require_product_manager(authorization)
     source = _clean_source({**payload, "published": False})
-    # One ordinary public page read gives newly staged items a thumbnail immediately.
-    image_url = await fetch_official_product_image(source["url"])
-    if image_url:
-        source["image_url"] = image_url
+    # A manual HTTPS override wins; otherwise one public page read finds a thumbnail.
+    if not source.get("image_url"):
+        image_url = await fetch_official_product_image(source["url"])
+        if image_url:
+            source["image_url"] = image_url
     sources = _all_sources()
     if any(source.get("url") == item.get("url") for item in sources):
         raise HTTPException(status_code=409, detail="That product URL is already being monitored")
@@ -2419,6 +2431,11 @@ async def update_product(product_id: str, payload: dict, authorization: str = He
                 payload["stock_estimate_reported_at"] = None
                 payload["stock_estimate_expires_at"] = None
         source = _clean_source({**current, **payload})
+        # Clearing the override asks the app to use the official retailer page image again.
+        if "image_url" in payload and not source.get("image_url"):
+            image_url = await fetch_official_product_image(source["url"])
+            if image_url:
+                source["image_url"] = image_url
         if any(index != other_index and source.get("url") == other.get("url") for other_index, other in enumerate(sources)):
             raise HTTPException(status_code=409, detail="That product URL is already being monitored")
         if any(index != other_index and monitored_product_key(source) == monitored_product_key(other) for other_index, other in enumerate(sources)):
