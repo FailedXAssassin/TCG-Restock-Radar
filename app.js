@@ -240,9 +240,12 @@ function setMode(mode){
 
 $("#onlineModeBtn").addEventListener("click",()=>setMode("online"));
 $("#localModeBtn").addEventListener("click",()=>setMode("local"));
-let localSearch=null;
-let localScanSession="";
-let localCooldownUntil=0;
+const ACTIVE_PAGE_KEY="tcg-radar-active-page";
+const LOCAL_COOLDOWN_KEY="tcg-radar-local-cooldown-until";
+const LOCAL_SEARCH_KEY="tcg-radar-local-search";
+let localSearch=(()=>{try{return JSON.parse(localStorage.getItem(LOCAL_SEARCH_KEY)||"null");}catch(_){return null;}})();
+let localScanSession=localSearch?.scan_session||"";
+let localCooldownUntil=Number(localStorage.getItem(LOCAL_COOLDOWN_KEY)||0)||0;
 let localCooldownTimer=null;
 function localDirections(store){
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${store.latitude},${store.longitude}`)}`;
@@ -275,19 +278,20 @@ function renderLocalScan(data){
   }
 }
 function localScanHeaders(){
-  const token=sessionStorage.getItem(ADMIN_KEY);
+  const token=managerSecret()||googleToken;
   return {"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{})};
 }
 function localCooldownActive(){return Date.now()<localCooldownUntil;}
-function startLocalCooldown(){
-  localCooldownUntil=Date.now()+30000;
+function startLocalCooldown(until=Date.now()+30000){
+  localCooldownUntil=until;
+  localStorage.setItem(LOCAL_COOLDOWN_KEY,String(localCooldownUntil));
   const button=$("#searchZipBtn");
   clearInterval(localCooldownTimer);
   const update=()=>{
     const seconds=Math.max(0,Math.ceil((localCooldownUntil-Date.now())/1000));
     button.disabled=seconds>0;
     button.textContent=seconds>0?`Refresh in ${seconds}s`:"Scan this ZIP";
-    if(!seconds)clearInterval(localCooldownTimer);
+    if(!seconds){clearInterval(localCooldownTimer);localStorage.removeItem(LOCAL_COOLDOWN_KEY);}
   };
   update();
   localCooldownTimer=setInterval(update,250);
@@ -307,6 +311,8 @@ async function runLocalScan(){
     const data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.detail||`HTTP ${response.status}`);
     localScanSession=data.scan_session||localScanSession;
+    localSearch={zip_code:zip,scan_session:localScanSession};
+    localStorage.setItem(LOCAL_SEARCH_KEY,JSON.stringify(localSearch));
     const suffix=data.manager_bypass?"Manager ZIP searches are unlimited.":data.zip_searches_remaining==null?"":` ${data.zip_searches_remaining} ZIP search${data.zip_searches_remaining===1?"":"es"} left in this three-hour window.`;
     status.textContent=`${data.stores?.length||0} supported store${data.stores?.length===1?"":"s"} found within ${radius} miles.${suffix}`;
     renderLocalScan(data);
@@ -319,7 +325,8 @@ $("#searchZipBtn").addEventListener("click",()=>{
   const zip=$("#zipFilter").value.trim();
   if(!/^\d{5}$/.test(zip)){$("#locationStatus").textContent="Enter a five-digit ZIP code.";return;}
   if(localSearch?.zip_code!==zip)localScanSession="";
-  localSearch={zip_code:zip};
+  localSearch={zip_code:zip,scan_session:localScanSession};
+  localStorage.setItem(LOCAL_SEARCH_KEY,JSON.stringify(localSearch));
   runLocalScan();
 });
 $("#zipFilter").addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();$("#searchZipBtn").click();}});
@@ -467,7 +474,7 @@ function updateManagerButton(){ $("#ownerBtn").hidden=!(location.search.includes
 updateManagerButton();
 function api(path){ return `${API_BASE}${path.replace(/^\//,"")}`; }
 async function ownerFetch(path, options={}){
-  const secret=managerSecret();
+  const secret=managerSecret()||googleToken;
   if(!secret) throw new Error("A manager code is required");
   const response=await fetch(api(path),{...options,headers:{Authorization:`Bearer ${secret}`,"Content-Type":"application/json",...(options.headers||{})}});
   if(response.status===401){ clearManagerSecret(); throw new Error("That owner or moderator code was not accepted"); }
@@ -514,7 +521,7 @@ async function loadManagerControls(){
 }
 function showOwner(){
   $("#ownerDialog").showModal(); $("#managerLogin").hidden=false; $("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true; $("#managerCode").value=""; $("#ownerMessage").textContent="Enter a manager code to unlock these controls.";
-  if(managerSecret()) loadManagerControls();
+  if(managerSecret()||googleToken) loadManagerControls();
 }
 $("#cancelManager").addEventListener("click",()=>{ $("#ownerDialog").close(); });
 $("#unlockManager").addEventListener("click",async()=>{const code=$("#managerCode").value.trim(); if(!code){$("#ownerMessage").textContent="Enter a manager code first."; return;} sessionStorage.setItem(ADMIN_KEY,code); localStorage.setItem(PERSISTENT_MANAGER_KEY,code); $("#ownerMessage").textContent="Checking code…"; await loadManagerControls();});
@@ -734,6 +741,7 @@ $("#alertSettingsForm").addEventListener("submit",async event=>{ event.preventDe
 
 function switchPage(page){
   activePage=page;
+  localStorage.setItem(ACTIVE_PAGE_KEY,page);
   document.querySelectorAll("[data-page]").forEach(section=>{ section.hidden=section.dataset.page!==page || (section.id==="welcomeGuide" && localStorage.getItem("tcg-radar-welcome-guide-dismissed")) || (section.id==="healthSection" && !healthAllowed); });
   const navMap={radar:"#navRadarBtn",alerts:"#navAlertsBtn",nearby:"#navNearbyBtn",collection:"#navCollectionBtn",more:"#navMoreBtn"};
   document.querySelectorAll(".bottom-nav button").forEach(button=>button.classList.toggle("active",button===$(navMap[page])));
@@ -778,8 +786,11 @@ $("#closeStatusHelpBtn").addEventListener("click",()=>$("#statusHelpDialog").clo
 $("#startSetupBtn").addEventListener("click",()=>{openSettings();$("#welcomeGuide").open=false;});
 
 const WELCOME_GUIDE_KEY="tcg-radar-welcome-guide-dismissed";
-if(localStorage.getItem(WELCOME_GUIDE_KEY)) $("#welcomeGuide").hidden=true;
-$("#dismissGuide").addEventListener("click",()=>{localStorage.setItem(WELCOME_GUIDE_KEY,"1");$("#welcomeGuide").hidden=true;});
+const welcomeGuide=$("#welcomeGuide");
+let welcomeGuideOpened=false;
+if(localStorage.getItem(WELCOME_GUIDE_KEY)) welcomeGuide.hidden=true;
+welcomeGuide.addEventListener("toggle",()=>{if(welcomeGuide.open) welcomeGuideOpened=true; else if(welcomeGuideOpened){localStorage.setItem(WELCOME_GUIDE_KEY,"1");welcomeGuide.hidden=true;}});
+$("#dismissGuide").addEventListener("click",()=>{localStorage.setItem(WELCOME_GUIDE_KEY,"1");welcomeGuide.hidden=true;});
 
 window.addEventListener("beforeinstallprompt",e=>{
   e.preventDefault(); deferredPrompt=e; $("#installBtn").hidden=false;
@@ -790,7 +801,9 @@ $("#installBtn").addEventListener("click",async()=>{
   deferredPrompt=null; $("#installBtn").hidden=true;
 });
 if("serviceWorker" in navigator) navigator.serviceWorker.register("service-worker.js");
-switchPage("radar");
+if(localSearch?.zip_code) $("#zipFilter").value=localSearch.zip_code;
+if(localCooldownUntil>Date.now()) startLocalCooldown(localCooldownUntil);
+switchPage(localStorage.getItem(ACTIVE_PAGE_KEY)||"radar");
 configureGoogleSignIn();
 loadFeed();
 setInterval(loadFeed, 30000);
