@@ -2677,11 +2677,18 @@ async def set_owner_pin(payload: dict, authorization: str = Header(default="")):
     token = authorization.removeprefix("Bearer ").strip()
     if not ((ADMIN_SECRET and token and secrets.compare_digest(token, ADMIN_SECRET)) or _is_google_owner(authorization)):
         raise HTTPException(status_code=403, detail="Sign in with the owner Google account to change the owner PIN")
+    current_pin = str(payload.get("current_pin", "")).strip()
     pin = str(payload.get("pin", "")).strip()
+    confirm_pin = str(payload.get("confirm_pin", "")).strip()
+    stored_hash = _owner_pin_hash()
+    if stored_hash and not (current_pin and secrets.compare_digest(_token_hash(current_pin), stored_hash)):
+        raise HTTPException(status_code=401, detail="Incorrect PIN")
     if not PIN_PATTERN.fullmatch(pin):
         raise HTTPException(status_code=422, detail="PIN must be 4 to 20 numbers")
+    if pin != confirm_pin:
+        raise HTTPException(status_code=422, detail="New PIN entries do not match")
     _write_owner_pin_hash(_token_hash(pin))
-    return {"configured": True, "message": "Owner PIN saved"}
+    return {"configured": True, "message": "Successful"}
 
 
 @app.get("/api/admin/moderators")
