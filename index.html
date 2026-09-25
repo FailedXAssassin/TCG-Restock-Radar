@@ -252,8 +252,8 @@
       </section>
       <div id="managerLogin" class="product-form">
         <div class="admin-lock" aria-hidden="true">⌁</div>
-        <h3>Unlock manager controls</h3><p class="muted">Enter your owner or moderator code to continue.</p>
-        <input id="managerCode" type="password" autocomplete="off" placeholder="Owner or moderator code" />
+        <h3>Unlock manager controls</h3><p class="muted">Enter your owner or moderator PIN to continue.</p>
+        <input id="managerCode" type="password" inputmode="numeric" autocomplete="one-time-code" minlength="4" maxlength="20" pattern="[0-9]{4,20}" placeholder="4–20 digit PIN" />
         <div class="dialog-actions"><button id="unlockManager" type="button">Unlock manager controls</button><button id="cancelManager" type="button" class="secondary">Cancel</button></div>
       </div>
       <details class="admin-section" id="productAdminSection" open>
@@ -323,9 +323,14 @@
         </details>
         <details class="admin-section">
           <summary><span>♙ Moderator access<small>Create or remove product managers</small></span><span>⌄</span></summary>
+        <form id="ownerPinForm" class="product-form">
+          <h3>Owner PIN</h3>
+          <p id="ownerPinStatus" class="muted">Loading PIN status…</p>
+          <div class="form-grid"><input id="ownerPin" required type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="20" pattern="[0-9]{4,20}" placeholder="Set 4–20 digit owner PIN" /><button type="submit">Save owner PIN</button></div>
+        </form>
         <form id="moderatorForm" class="product-form">
           <h3>Moderators</h3>
-          <div class="form-grid"><input id="moderatorName" required maxlength="60" placeholder="Moderator name" /><button type="submit">Create moderator code</button></div>
+          <div class="form-grid"><input id="moderatorName" required maxlength="60" placeholder="Moderator name" /><input id="moderatorPin" required type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="20" pattern="[0-9]{4,20}" placeholder="Set 4–20 digit moderator PIN" /><button type="submit">Save moderator PIN</button></div>
         </form>
         <div id="moderatorList" class="owner-products"></div>
         </details>
