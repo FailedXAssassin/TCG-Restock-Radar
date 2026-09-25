@@ -236,3 +236,12 @@ body:before{right:50%;bottom:12vh;transform:translateX(50%);width:min(82vw,460px
 
 /* A component class must never override the semantic hidden attribute. */
 [hidden]{display:none!important}
+
+
+/* Public identity badges: real names/emails are never shown. */
+.staff-owner strong{font-weight:950;background:linear-gradient(90deg,#ff6b6b,#ffd166,#6ee7b7,#5eead4,#60a5fa,#c084fc,#f472b6);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:owner-rainbow 5s linear infinite}
+.staff-moderator strong{color:#74e6a5;font-weight:850}
+@keyframes owner-rainbow{to{background-position:300% 0}}
+#nicknameForm{margin-top:4px}
+#nicknameForm small{display:block;margin-top:-6px}
+#accountDialog:has(#nicknameForm:not([hidden])),#accountDialog:has(#nicknameForm:not([hidden])) .account-dialog-card{height:374px;min-height:374px}
