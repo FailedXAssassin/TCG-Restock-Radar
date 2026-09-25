@@ -564,11 +564,14 @@ $("#sortMode").addEventListener("change",event=>{localStorage.setItem(SORT_MODE_
 const ADMIN_KEY="tcg-radar-manager-secret";
 const PERSISTENT_MANAGER_KEY="tcg-radar-manager-secret-persistent";
 const MANAGER_MODE_KEY="tcg-radar-manager-mode";
+const MODERATOR_ID_KEY="tcg-radar-moderator-id";
 localStorage.removeItem(PERSISTENT_MANAGER_KEY);
 let managerRole="";
 function managerSecret(){return sessionStorage.getItem(ADMIN_KEY)||"";}
 function clearManagerSecret(){sessionStorage.removeItem(ADMIN_KEY);localStorage.removeItem(PERSISTENT_MANAGER_KEY);}
+function knownModerator(){return Boolean(localStorage.getItem(MODERATOR_ID_KEY));}
 function hasManagerAccess(){return Boolean(accountUser?.is_owner||managerSecret());}
+function hasManagerIdentity(){return Boolean(accountUser?.is_owner||knownModerator()||managerSecret());}
 function applyManagerVisibility(){const tracker=$("#activeTrackerSnapshot");if(tracker)tracker.hidden=!hasManagerAccess();$("#healthSection").hidden=!hasManagerAccess()||activePage!=="radar";}
 function showPinFeedback(title,text){$("#pinFeedbackTitle").textContent=title;$("#pinFeedbackText").textContent=text;$("#pinFeedbackDialog").showModal();}
 $("#closePinFeedbackBtn").addEventListener("click",()=>$("#pinFeedbackDialog").close());
@@ -588,7 +591,7 @@ $("#cancelRestartBtn").addEventListener("click",()=>$("#restartWarningDialog").c
 $("#confirmRestartBtn").addEventListener("click",()=>{$("#restartWarningDialog").close();requestServerRestart(true);});
 let priorityAutomation={auto_high_priority:false,top_limit:20,trend_source:"not_configured",auto_selected_product_ids:[]};
 let helpPollTimer=null, lastHelpMessageId="";
-function updateManagerButton(){ $("#ownerBtn").hidden=!hasManagerAccess(); applyManagerVisibility(); }
+function updateManagerButton(){ $("#ownerBtn").hidden=!hasManagerIdentity(); applyManagerVisibility(); }
 updateManagerButton();
 function api(path){ return `${API_BASE}${path.replace(/^\//,"")}`; }
 async function ownerFetch(path, options={}){
@@ -659,7 +662,7 @@ async function loadManagerControls(){
 function showOwner(){
   const managerLink=new URLSearchParams(location.search).has("manager");
   const signedInOwner=Boolean(accountUser?.is_owner);
-  if((accountUser&&!signedInOwner&&!managerSecret())||(!hasManagerAccess()&&!managerLink)) return;
+  if((accountUser&&!signedInOwner&&!managerSecret()&&!knownModerator())||(!hasManagerIdentity()&&!managerLink)) return;
   $("#ownerDialog").showModal();
   $("#ownerPinQuick").hidden=true;
   $("#productForm").hidden=true;
@@ -848,6 +851,20 @@ async function loadModerators(){
       };
       list.appendChild(row);
     }
+    for(const invite of data.pending_invites||[]){
+      const row=document.createElement("div");
+      row.className="owner-product staff-moderator";
+      row.innerHTML='<span><strong></strong><small></small></span><button type="button" class="remove">Revoke invite</button>';
+      row.querySelector("strong").textContent=invite.nickname;
+      const expiry=new Date(invite.expires_at);
+      row.querySelector("small").textContent=`Invite pending • expires ${Number.isNaN(expiry.getTime())?"soon":expiry.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}`;
+      row.querySelector("button").onclick=async()=>{
+        if(!confirm(`Revoke the unused invite for ${invite.nickname}?`))return;
+        try{await ownerFetch(`/api/admin/moderator-invites/${invite.id}`,{method:"DELETE"});await loadModerators();}
+        catch(error){$("#ownerMessage").textContent=error.message;}
+      };
+      list.appendChild(row);
+    }
   }catch(error){$("#ownerMessage").textContent=error.message;}
 }
 async function loadOwnerPinStatus(){try{const data=await ownerFetch("/api/admin/owner-pin"); $("#ownerPinStatus").textContent=data.configured?"Enter your current PIN to change it.":"No owner PIN set yet—leave Current PIN blank to create your first one.";}catch(error){$("#ownerPinStatus").textContent=error.message;}}
@@ -866,10 +883,23 @@ $("#moderatorForm").addEventListener("submit",async event=>{
   const pin=$("#moderatorPin").value.trim();
   if(!/^\d{4,20}$/.test(pin)){$("#ownerMessage").textContent="Moderator PIN must be 4–20 numbers.";return;}
   try{
-    const result=await ownerFetch("/api/admin/moderators",{method:"POST",body:JSON.stringify({nickname:$("#moderatorName").value.trim(),access_code:pin})});
+    const result=await ownerFetch("/api/admin/moderator-invites",{method:"POST",body:JSON.stringify({nickname:$("#moderatorName").value.trim(),temporary_pin:pin})});
+    const inviteUrl=new URL(location.href);
+    inviteUrl.search="";
+    inviteUrl.searchParams.set("mod_invite",result.token);
     $("#moderatorName").value=""; $("#moderatorPin").value="";
+    const inviteResult=$("#moderatorInviteResult");
+    inviteResult.hidden=false;
+    inviteResult.innerHTML="";
+    const label=document.createElement("span");
+    label.textContent=`Private invite for ${result.nickname}. It expires in 10 minutes. `;
+    const copy=document.createElement("button");
+    copy.type="button";copy.className="secondary";copy.textContent="Copy invite link";
+    copy.onclick=async()=>{try{await navigator.clipboard.writeText(inviteUrl.href);copy.textContent="Copied!";}catch(_){copy.textContent="Copy failed — tap and hold this link";}};
+    const link=document.createElement("a");link.href=inviteUrl.href;link.textContent=inviteUrl.href;link.target="_blank";link.rel="noopener";link.style.display="block";link.style.marginTop="8px";link.style.overflowWrap="anywhere";
+    inviteResult.append(label,copy,link);
     await loadModerators();
-    $("#ownerMessage").textContent=`Moderator ${result.nickname||result.name} added. Send their temporary PIN privately.`;
+    $("#ownerMessage").textContent="Moderator invite created. Send that link and the temporary PIN privately.";
   }catch(error){$("#ownerMessage").textContent=error.message;}
 });
 $("#testProductLinkBtn").addEventListener("click",async()=>{
@@ -1042,6 +1072,47 @@ $("#installBtn").addEventListener("click",async()=>{
   deferredPrompt.prompt(); await deferredPrompt.userChoice;
   deferredPrompt=null; $("#installBtn").hidden=true;
 });
+async function openModeratorInvite(){
+  const token=new URLSearchParams(location.search).get("mod_invite");
+  if(!token)return;
+  const dialog=$("#moderatorInviteDialog");
+  const message=$("#moderatorInviteMessage");
+  dialog.showModal();
+  try{
+    const response=await fetch(api("/api/moderator-invites/"+encodeURIComponent(token)),{cache:"no-store"});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.detail||"This moderator invite is not available");
+    message.textContent=`You’re setting up moderator access as ${data.nickname}. This private link expires in 10 minutes.`;
+  }catch(error){
+    message.textContent=error.message;
+    $("#inviteCurrentPin").disabled=true;$("#inviteNewPin").disabled=true;$("#inviteConfirmPin").disabled=true;$("#redeemModeratorInvite").disabled=true;
+  }
+}
+$("#cancelModeratorInvite").addEventListener("click",()=>$("#moderatorInviteDialog").close());
+$("#moderatorInviteRedeemForm").addEventListener("submit",async event=>{
+  event.preventDefault();
+  const token=new URLSearchParams(location.search).get("mod_invite");
+  if(!token)return;
+  const current_pin=$("#inviteCurrentPin").value.trim(),new_pin=$("#inviteNewPin").value.trim(),confirm_pin=$("#inviteConfirmPin").value.trim();
+  if(!/^\d{4,20}$/.test(current_pin)||!/^\d{4,20}$/.test(new_pin)){ $("#moderatorInviteMessage").textContent="Each PIN must contain 4–20 numbers.";return; }
+  $("#redeemModeratorInvite").disabled=true;
+  try{
+    const response=await fetch(api("/api/moderator-invites/redeem"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token,current_pin,new_pin,confirm_pin})});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.detail||"Could not finish setup");
+    localStorage.setItem(MODERATOR_ID_KEY,data.moderator_id);
+    sessionStorage.setItem(ADMIN_KEY,new_pin);
+    history.replaceState({},document.title,location.pathname+location.hash);
+    $("#moderatorInviteDialog").close();
+    updateManagerButton();
+    showPinFeedback("Successful","Your moderator PIN is set. Manager controls are unlocked for this session.");
+    showOwner();
+  }catch(error){
+    $("#moderatorInviteMessage").textContent=error.message;
+    $("#redeemModeratorInvite").disabled=false;
+  }
+});
+openModeratorInvite();
 if("serviceWorker" in navigator) navigator.serviceWorker.register("service-worker.js");
 if(localSearch?.zip_code) $("#zipFilter").value=localSearch.zip_code;
 if(localCooldownUntil>Date.now()) startLocalCooldown(localCooldownUntil);
