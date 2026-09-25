@@ -509,7 +509,7 @@ function updateAccountQuick(){
   $("#accountQuickDetail").textContent=signed?"Tap to sign out":"Use Google to save purchases";
 }
 function accountHeaders(){return googleToken?{Authorization:`Bearer ${googleToken}`}:{};}
-async function renderPurchases(){const list=$("#purchaseList"); list.innerHTML=""; if(!googleToken){$("#purchaseForm").hidden=true;$("#purchaseLoginNote").hidden=false;$("#signOutBtn").hidden=true;$("#googleSignIn").hidden=false;$("#accountStatus").textContent="Sign in with Google to save purchases across devices.";updateAccountQuick();return;} try{const response=await fetch(api("/api/purchases"),{headers:accountHeaders(),cache:"no-store"}); if(!response.ok)throw new Error("Your Google session expired. Please sign in again."); const items=(await response.json()).items||[]; $("#purchaseForm").hidden=false;$("#purchaseLoginNote").hidden=true;$("#signOutBtn").hidden=false;$("#googleSignIn").hidden=true;$("#accountStatus").textContent=accountUser?`Signed in as ${accountUser.is_owner?"Owner":(accountUser.name||"Google member")}`:"Signed in with Google";updateAccountQuick();$("#purchaseTotal").textContent=new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(items.reduce((sum,item)=>sum+Number(item.paid||0),0)); if(!items.length){list.innerHTML="<small>No purchases logged yet.</small>";return;} for(const item of items){const row=document.createElement("div"); row.className="purchase-row"; const info=document.createElement("span"); const title=document.createElement("strong"); title.textContent=`${item.name} × ${item.quantity}`; const detail=document.createElement("small"); detail.textContent=`${item.retailer||"Retailer not listed"} • ${item.date||"Date not listed"} • ${money(item.paid)}`; info.append(title,detail); const remove=document.createElement("button"); remove.className="remove"; remove.type="button"; remove.textContent="Remove"; remove.onclick=async()=>{await fetch(api(`/api/purchases/${encodeURIComponent(item.id)}`),{method:"DELETE",headers:accountHeaders()});renderPurchases();}; row.append(info,remove); list.appendChild(row);}}catch(error){saveGoogleToken("");$("#accountStatus").textContent=error.message;$("#purchaseForm").hidden=true;}}
+async function renderPurchases(){const list=$("#purchaseList"); list.innerHTML=""; if(!googleToken){$("#purchaseForm").hidden=true;$("#purchaseLoginNote").hidden=false;$("#signOutBtn").hidden=true;$("#googleSignIn").hidden=false;$("#nicknameForm").hidden=true;$("#accountStatus").textContent="Sign in with Google to save purchases across devices.";updateAccountQuick();return;} try{const response=await fetch(api("/api/purchases"),{headers:accountHeaders(),cache:"no-store"}); if(!response.ok)throw new Error("Your Google session expired. Please sign in again."); const items=(await response.json()).items||[]; $("#purchaseForm").hidden=false;$("#purchaseLoginNote").hidden=true;$("#signOutBtn").hidden=false;$("#googleSignIn").hidden=true;$("#nicknameForm").hidden=false;$("#publicNickname").value=accountUser?.nickname||"";$("#accountStatus").textContent=accountUser?`Signed in as ${accountUser.nickname||accountUser.name||"Google member"}`:"Signed in with Google";updateAccountQuick();$("#purchaseTotal").textContent=new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(items.reduce((sum,item)=>sum+Number(item.paid||0),0)); if(!items.length){list.innerHTML="<small>No purchases logged yet.</small>";return;} for(const item of items){const row=document.createElement("div"); row.className="purchase-row"; const info=document.createElement("span"); const title=document.createElement("strong"); title.textContent=`${item.name} × ${item.quantity}`; const detail=document.createElement("small"); detail.textContent=`${item.retailer||"Retailer not listed"} • ${item.date||"Date not listed"} • ${money(item.paid)}`; info.append(title,detail); const remove=document.createElement("button"); remove.className="remove"; remove.type="button"; remove.textContent="Remove"; remove.onclick=async()=>{await fetch(api(`/api/purchases/${encodeURIComponent(item.id)}`),{method:"DELETE",headers:accountHeaders()});renderPurchases();}; row.append(info,remove); list.appendChild(row);}}catch(error){saveGoogleToken("");$("#accountStatus").textContent=error.message;$("#purchaseForm").hidden=true;}}
 async function configureGoogleSignIn(){try{const config=await fetch(api("/api/auth/config"),{cache:"no-store"}).then(r=>r.json()); if(!config.enabled){$("#accountStatus").textContent="Google sign-in is being configured.";return;} if(googleToken){accountUser=await fetch(api("/api/auth/me"),{headers:accountHeaders()}).then(r=>r.ok?r.json():null);if(accountUser){renderPurchases();return;}googleToken="";sessionStorage.removeItem("tcg-radar-google-token");} if(!window.google?.accounts?.id){setTimeout(configureGoogleSignIn,500);return;} window.google.accounts.id.initialize({client_id:config.client_id,callback:credential=>{saveGoogleToken(credential.credential);fetch(api("/api/auth/me"),{headers:accountHeaders()}).then(r=>r.ok?r.json():null).then(user=>{if(!user){saveGoogleToken("");throw new Error("Google sign-in was not accepted");}accountUser=user;updateManagerButton();renderPurchases();loadFeed();if($("#accountDialog").open) $("#accountDialog").close();}).catch(error=>{$("#accountStatus").textContent=error.message;});},});$("#googleSignIn").innerHTML="";window.google.accounts.id.renderButton($("#googleSignIn"),{theme:"filled_black",size:"large",shape:"pill",text:"signin_with"});}catch(_){$("#accountStatus").textContent="Google sign-in is temporarily unavailable.";}}
 function openPurchases(){ $("#purchasesDialog").showModal(); $("#purchaseDate").value=new Date().toISOString().slice(0,10); configureGoogleSignIn(); renderPurchases(); }
 function openAccount(){
@@ -525,6 +525,16 @@ $("#closePurchasesBtn").addEventListener("click",()=>$("#purchasesDialog").close
 $("#closeAccountBtn").addEventListener("click",()=>$("#accountDialog").close());
 $("#accountQuickBtn").addEventListener("click",()=>accountUser?signOut():openAccount());
 $("#signOutBtn").addEventListener("click",signOut);
+$("#nicknameForm").addEventListener("submit",async event=>{
+  event.preventDefault();
+  try{
+    const response=await fetch(api("/api/profile/nickname"),{method:"PUT",headers:{"Content-Type":"application/json",...accountHeaders()},body:JSON.stringify({nickname:$("#publicNickname").value.trim()})});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.detail||"Nickname could not be saved");
+    if(accountUser) accountUser.nickname=data.nickname;
+    $("#accountStatus").textContent=`Public nickname saved: ${data.nickname}`;
+  }catch(error){$("#accountStatus").textContent=error.message;}
+});
 $("#purchaseForm").addEventListener("submit",async event=>{event.preventDefault();const item={name:$("#purchaseName").value.trim(),quantity:Math.max(1,Number($("#purchaseQty").value||1)),paid:Number($("#purchasePaid").value||0),retailer:$("#purchaseRetailer").value.trim(),date:$("#purchaseDate").value,notes:$("#purchaseNotes").value.trim()};const response=await fetch(api("/api/purchases"),{method:"POST",headers:{"Content-Type":"application/json",...accountHeaders()},body:JSON.stringify(item)});if(!response.ok){$("#accountStatus").textContent=(await response.json().catch(()=>({}))).detail||"Purchase could not be saved";return;}event.target.reset();$("#purchaseQty").value="1";renderPurchases();});
 
 const restoredFilters=savedFilters(); if(restoredFilters){appliedFilters=restoredFilters;setFilters(restoredFilters);}else appliedFilters=readFilters();
@@ -789,10 +799,54 @@ $("#runDiscoveryBtn").addEventListener("click",async()=>{try{$("#discoverySummar
 $("#loadDiscoveryBtn").addEventListener("click",loadDiscoveryReview);
 async function loadReports(){try{const data=await ownerFetch("/api/admin/reports"); const list=$("#ownerReports"); list.innerHTML=""; if(!(data.items||[]).length){list.innerHTML="<small>No user reports yet.</small>";return;} for(const report of data.items){const row=document.createElement("div"); row.className="owner-product"; row.innerHTML=`<span><strong></strong><small></small></span>`; row.querySelector("strong").textContent=report.reason.replaceAll("_"," "); row.querySelector("small").textContent=`Product ${report.product_id} • ${new Date(report.created_at).toLocaleString()}`; list.appendChild(row);}}catch(error){$("#ownerMessage").textContent=error.message;}}
 $("#loadReportsBtn").addEventListener("click",loadReports);
-async function loadModerators(){try{const data=await ownerFetch("/api/admin/moderators"); const list=$("#moderatorList"); list.innerHTML=""; for(const moderator of data.items||[]){const row=document.createElement("div"); row.className="owner-product"; row.innerHTML=`<span><strong></strong><small>Can add and remove tracked URLs only</small></span><button type="button" class="remove">Remove</button>`; row.querySelector("strong").textContent=moderator.name; row.querySelector("button").onclick=async()=>{if(!confirm(`Remove ${moderator.name}'s moderator access?`))return; try{await ownerFetch(`/api/admin/moderators/${moderator.id}`,{method:"DELETE"}); await loadModerators();}catch(error){$("#ownerMessage").textContent=error.message;}}; list.appendChild(row);}}catch(error){$("#ownerMessage").textContent=error.message;}}
+async function loadModerators(){
+  try{
+    const data=await ownerFetch("/api/admin/moderators");
+    $("#ownerNickname").value=data.owner_nickname||"Owner";
+    const list=$("#moderatorList");
+    list.innerHTML="";
+    const owner=document.createElement("div");
+    owner.className="owner-product staff-owner";
+    owner.innerHTML=`<span><strong></strong><small>Owner • full command access</small></span>`;
+    owner.querySelector("strong").textContent=data.owner_nickname||"Owner";
+    list.appendChild(owner);
+    for(const moderator of data.items||[]){
+      const nickname=moderator.nickname||moderator.name;
+      const row=document.createElement("div");
+      row.className="owner-product staff-moderator";
+      row.innerHTML=`<span><strong></strong><small>Moderator • can add and remove tracked URLs only</small></span><button type="button" class="remove">Remove</button>`;
+      row.querySelector("strong").textContent=nickname;
+      row.querySelector("button").onclick=async()=>{
+        if(!confirm(`Remove ${nickname}'s moderator access?`))return;
+        try{await ownerFetch(`/api/admin/moderators/${moderator.id}`,{method:"DELETE"});await loadModerators();}
+        catch(error){$("#ownerMessage").textContent=error.message;}
+      };
+      list.appendChild(row);
+    }
+  }catch(error){$("#ownerMessage").textContent=error.message;}
+}
 async function loadOwnerPinStatus(){try{const data=await ownerFetch("/api/admin/owner-pin"); $("#ownerPinStatus").textContent=data.configured?"Enter your current PIN to change it.":"No owner PIN set yet—leave Current PIN blank to create your first one.";}catch(error){$("#ownerPinStatus").textContent=error.message;}}
 $("#ownerPinForm").addEventListener("submit",async event=>{event.preventDefault(); const currentPin=$("#currentOwnerPin").value.trim(); const pin=$("#ownerPin").value.trim(); const confirmPin=$("#confirmOwnerPin").value.trim(); if(!/^\d{4,20}$/.test(pin)||!/^\d{4,20}$/.test(confirmPin)){$("#ownerMessage").textContent="New PIN must be 4–20 numbers.";showPinFeedback("Incorrect PIN","Your new PIN must use 4–20 numbers.");return;} if(pin!==confirmPin){$("#ownerMessage").textContent="New PIN entries do not match.";showPinFeedback("Incorrect PIN","The new PIN entries do not match.");return;} try{const result=await ownerFetch("/api/admin/owner-pin",{method:"PUT",body:JSON.stringify({current_pin:currentPin,pin,confirm_pin:confirmPin})}); $("#currentOwnerPin").value=""; $("#ownerPin").value=""; $("#confirmOwnerPin").value=""; $("#ownerPinStatus").textContent="Owner PIN is set. Enter your current PIN to change it."; $("#ownerMessage").textContent=result.message;showPinFeedback("Successful","Your owner PIN was saved.");}catch(error){$("#ownerMessage").textContent=error.message;showPinFeedback(error.message==="Incorrect PIN"?"Incorrect PIN":"Could not save PIN",error.message);}});
-$("#moderatorForm").addEventListener("submit",async event=>{event.preventDefault(); const pin=$("#moderatorPin").value.trim(); if(!/^\d{4,20}$/.test(pin)){$("#ownerMessage").textContent="Moderator PIN must be 4–20 numbers.";return;} try{const result=await ownerFetch("/api/admin/moderators",{method:"POST",body:JSON.stringify({name:$("#moderatorName").value,access_code:pin})}); $("#moderatorName").value=""; $("#moderatorPin").value=""; await loadModerators(); $("#ownerMessage").textContent=`Moderator PIN saved for ${result.name}. Send it privately.`;}catch(error){$("#ownerMessage").textContent=error.message;}});
+$("#ownerNicknameForm").addEventListener("submit",async event=>{
+  event.preventDefault();
+  try{
+    const result=await ownerFetch("/api/profile/nickname",{method:"PUT",body:JSON.stringify({nickname:$("#ownerNickname").value.trim()})});
+    if(accountUser) accountUser.nickname=result.nickname;
+    $("#ownerMessage").textContent="Owner nickname saved.";
+    await loadModerators();
+  }catch(error){$("#ownerMessage").textContent=error.message;}
+});
+$("#moderatorForm").addEventListener("submit",async event=>{
+  event.preventDefault();
+  const pin=$("#moderatorPin").value.trim();
+  if(!/^\d{4,20}$/.test(pin)){$("#ownerMessage").textContent="Moderator PIN must be 4–20 numbers.";return;}
+  try{
+    const result=await ownerFetch("/api/admin/moderators",{method:"POST",body:JSON.stringify({nickname:$("#moderatorName").value.trim(),access_code:pin})});
+    $("#moderatorName").value=""; $("#moderatorPin").value="";
+    await loadModerators();
+    $("#ownerMessage").textContent=`Moderator ${result.nickname||result.name} added. Send their temporary PIN privately.`;
+  }catch(error){$("#ownerMessage").textContent=error.message;}
+});
 $("#testProductLinkBtn").addEventListener("click",async()=>{
   const url=$("#ownerUrl").value.trim();
   const result=$("#linkTestResult");
