@@ -37,6 +37,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "")
 BEST_BUY_DISCOVERY_ENABLED = os.environ.get("TCG_RADAR_BEST_BUY_DISCOVERY_ENABLED", "").strip().lower() in {"1", "true", "yes"}
 DISCOVERY_INTERVAL_SECONDS = max(3600, int(os.environ.get("TCG_RADAR_DISCOVERY_INTERVAL_SECONDS", "21600")))
 LOCAL_STORE_SEARCH_URL = "https://overpass-api.de/api/interpreter"
+ZIP_GEOCODE_URL = "https://nominatim.openstreetmap.org/search"
 LOCAL_SUPPORTED_RETAILERS = {
     "walmart": "Walmart",
     "target": "Target",
@@ -77,6 +78,10 @@ DIRECT_SELLER_NAMES = {
 scheduler_task = None
 http_client = None
 last_discovery_attempt = {}
+local_zip_searches = {}
+local_zip_sessions = {}
+zip_geocode_lock = asyncio.Lock()
+last_zip_geocode_at = 0.0
 
 
 def now_iso():
@@ -242,6 +247,8 @@ def ensure_database():
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_users (google_sub TEXT PRIMARY KEY, email TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_purchases (id TEXT PRIMARY KEY, google_sub TEXT NOT NULL, payload JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_visitors (client_id TEXT PRIMARY KEY, first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(), last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cursor.execute("CREATE TABLE IF NOT EXISTS radar_local_zip_searches (id TEXT PRIMARY KEY, client_id TEXT NOT NULL, searched_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cursor.execute("CREATE TABLE IF NOT EXISTS radar_local_zip_sessions (id TEXT PRIMARY KEY, client_id TEXT NOT NULL, zip_hash TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL)")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_catalog_products (canonical_key TEXT PRIMARY KEY, retailer TEXT NOT NULL, retailer_product_id TEXT NOT NULL, payload JSONB NOT NULL, first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_monitor_state (product_id TEXT PRIMARY KEY, payload JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_inventory_observations (id TEXT PRIMARY KEY, product_id TEXT NOT NULL, payload JSONB NOT NULL, observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
@@ -1466,7 +1473,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="TCG Radar API",
-    version="3.5.4",
+    version="3.5.5",
     lifespan=lifespan,
 )
 
@@ -1486,7 +1493,7 @@ app.add_middleware(
 async def root():
     return {
         "name": "TCG Radar",
-        "version": "3.5.4",
+        "version": "3.5.5",
         "status": "online",
         "message": "TCG Radar backend is running.",
     }
@@ -1498,7 +1505,7 @@ async def health():
 
     return {
         "status": "online",
-        "version": "3.5.4",
+        "version": "3.5.5",
         "time": now_iso(),
         "configured_products": len(
             sources
@@ -1530,20 +1537,111 @@ def _distance_miles(latitude_a, longitude_a, latitude_b, longitude_b):
     return radius_miles * 2 * math.asin(min(1, math.sqrt(value)))
 
 
+def _zip_hash(zip_code):
+    return hashlib.sha256(zip_code.encode("utf-8")).hexdigest()
+
+
+def _manager_role_or_none(authorization):
+    try:
+        return manager_role(authorization)
+    except HTTPException:
+        return None
+
+
+def _valid_local_zip_session(client_id, zip_code, session_id):
+    if not client_id or not session_id:
+        return False
+    zip_hash = _zip_hash(zip_code)
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT 1 FROM radar_local_zip_sessions WHERE id = %s AND client_id = %s AND zip_hash = %s AND expires_at > NOW()",
+                    (session_id, client_id, zip_hash),
+                )
+                return cursor.fetchone() is not None
+    session = local_zip_sessions.get(session_id)
+    return bool(session and session["client_id"] == client_id and session["zip_hash"] == zip_hash and session["expires_at"] > time.time())
+
+
+def _start_local_zip_session(client_id, zip_code, is_manager):
+    if is_manager:
+        return None, None
+    if not client_id:
+        raise HTTPException(status_code=422, detail="This device needs a local search ID; refresh and try again")
+    session_id = secrets.token_urlsafe(18)
+    zip_hash = _zip_hash(zip_code)
+    expires_at = datetime.fromtimestamp(time.time() + 3 * 60 * 60, timezone.utc)
+    if database_enabled():
+        with _database_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT COUNT(*) FROM radar_local_zip_searches WHERE client_id = %s AND searched_at > NOW() - INTERVAL '3 hours'", (client_id,))
+                used = cursor.fetchone()[0]
+                if used >= 2:
+                    raise HTTPException(status_code=429, detail="You have used both ZIP searches. Try again after the three-hour window.")
+                cursor.execute("INSERT INTO radar_local_zip_searches (id, client_id) VALUES (%s, %s)", (secrets.token_urlsafe(12), client_id))
+                cursor.execute("INSERT INTO radar_local_zip_sessions (id, client_id, zip_hash, expires_at) VALUES (%s, %s, %s, %s)", (session_id, client_id, zip_hash, expires_at))
+            connection.commit()
+        return session_id, 1 - used
+    now = time.time()
+    recent = [stamp for stamp in local_zip_searches.get(client_id, []) if stamp > now - 3 * 60 * 60]
+    if len(recent) >= 2:
+        raise HTTPException(status_code=429, detail="You have used both ZIP searches. Try again after the three-hour window.")
+    recent.append(now)
+    local_zip_searches[client_id] = recent
+    local_zip_sessions[session_id] = {"client_id": client_id, "zip_hash": zip_hash, "expires_at": now + 3 * 60 * 60}
+    return session_id, 2 - len(recent)
+
+
+async def _coordinates_for_zip(zip_code):
+    global last_zip_geocode_at
+    async with zip_geocode_lock:
+        delay = 1.05 - (time.monotonic() - last_zip_geocode_at)
+        if delay > 0:
+            await asyncio.sleep(delay)
+        try:
+            response = await http_client.get(
+                ZIP_GEOCODE_URL,
+                params={"q": f"{zip_code}, USA", "format": "jsonv2", "limit": 1, "countrycodes": "us"},
+                headers={"User-Agent": "TCG-Radar Local Radar/3.5 (public store finder)"},
+                timeout=12,
+            )
+            response.raise_for_status()
+            result = response.json()
+        except (httpx.HTTPError, ValueError):
+            raise HTTPException(status_code=503, detail="ZIP lookup is temporarily unavailable; please try again")
+        finally:
+            last_zip_geocode_at = time.monotonic()
+    if not result:
+        raise HTTPException(status_code=422, detail="That ZIP code could not be found")
+    latitude, longitude = safe_float(result[0].get("lat")), safe_float(result[0].get("lon"))
+    if latitude is None or longitude is None:
+        raise HTTPException(status_code=422, detail="That ZIP code did not return a usable location")
+    return latitude, longitude
+
+
 @app.post("/api/local/scan")
-async def local_scan(payload: dict):
-    # Coordinates are used for this request only. They are not written to the
-    # database, logs, product records, or notification preferences.
-    latitude = safe_float(payload.get("latitude"))
-    longitude = safe_float(payload.get("longitude"))
+async def local_scan(payload: dict, authorization: str = Header(default="")):
+    # ZIP codes and derived coordinates are used only for this response. The
+    # durable rate-limit data stores a device ID, timestamp and ZIP hash only.
+    zip_code = str(payload.get("zip_code", "")).strip()
+    client_id = str(payload.get("client_id", "")).strip()[:80]
+    session_id = str(payload.get("scan_session", "")).strip()[:120]
     radius_miles = safe_float(payload.get("radius_miles"))
-    if latitude is None or longitude is None or radius_miles not in {5.0, 10.0, 20.0, 50.0}:
-        raise HTTPException(status_code=422, detail="Use a valid location and a 5, 10, 20, or 50 mile radius")
-    if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
-        raise HTTPException(status_code=422, detail="Location coordinates are out of range")
+    if not re.fullmatch(r"\d{5}", zip_code):
+        raise HTTPException(status_code=422, detail="Enter a valid five-digit ZIP code")
+    if radius_miles not in {5.0, 10.0, 20.0, 50.0}:
+        raise HTTPException(status_code=422, detail="Choose a 5, 10, 20, or 50 mile radius")
     if http_client is None:
         raise HTTPException(status_code=503, detail="Local Radar is starting; try again shortly")
 
+    role = _manager_role_or_none(authorization)
+    is_manager = role in {"owner", "moderator"}
+    remaining = None
+    if not is_manager and not _valid_local_zip_session(client_id, zip_code, session_id):
+        session_id, remaining = _start_local_zip_session(client_id, zip_code, False)
+
+    latitude, longitude = await _coordinates_for_zip(zip_code)
     radius_meters = int(radius_miles * 1609.344)
     query = f"""[out:json][timeout:12];
 (
@@ -1577,25 +1675,17 @@ out center tags;"""
         if tags.get("addr:city"):
             address = f"{address}, {tags['addr:city']}".strip(", ")
         stores.append({
-            "id": key,
-            "retailer": retailer,
-            "name": name,
-            "address": address or None,
-            "latitude": store_lat,
-            "longitude": store_lon,
-            "distance_miles": round(distance, 1),
-            "inventory_status": "unknown",
-            "inventory_source": "automated",
+            "id": key, "retailer": retailer, "name": name, "address": address or None,
+            "latitude": store_lat, "longitude": store_lon, "distance_miles": round(distance, 1),
+            "inventory_status": "unknown", "inventory_source": "automated",
             "inventory_note": "Store found. Automated store-specific inventory is not supported for this retailer yet.",
-            "items": [],
-            "checked_at": now_iso(),
+            "items": [], "checked_at": now_iso(),
         })
     stores.sort(key=lambda store: (store["distance_miles"], store["name"].lower()))
     return {
-        "generated_at": now_iso(),
-        "radius_miles": int(radius_miles),
-        "stores": stores[:80],
+        "generated_at": now_iso(), "radius_miles": int(radius_miles), "stores": stores[:80],
         "inventory_scan": {"attempted": len(stores[:80]), "verified_local_inventory": 0},
+        "scan_session": session_id, "zip_searches_remaining": remaining, "manager_bypass": is_manager,
     }
 
 
