@@ -4,8 +4,11 @@ let rows = [];
 const WATCHLIST_KEY="tcg-radar-watchlist";
 const RETAILER_SELECTION_KEY="tcg-radar-retailer-selection";
 const SORT_MODE_KEY="tcg-radar-sort-mode";
-const ALERT_FRESH_MS=30*60*1000;
+const ALERT_VISIBLE_MS=30*60*1000;
+const FRESH_DROP_MS=5*60*1000;
+const OLDER_ALERT_BATCH_SIZE=5;
 let showEarlierAlerts=false;
+let olderAlertsToShow=OLDER_ALERT_BATCH_SIZE;
 let watchlistOnly=false;
 const FILTER_IDS=["gameFilter","retailerFilter","statusFilter","markupFilter","quantityFilter","searchInput"];
 let appliedFilters={};
@@ -80,7 +83,11 @@ function isTodayLocal(value){
 }
 function isFreshDrop(value){
   const timestamp=new Date(value||0).getTime();
-  return Boolean(timestamp)&&Date.now()-timestamp>=0&&Date.now()-timestamp<=ALERT_FRESH_MS;
+  return Boolean(timestamp)&&Date.now()-timestamp>=0&&Date.now()-timestamp<=FRESH_DROP_MS;
+}
+function isVisibleLiveAlert(value){
+  const timestamp=new Date(value||0).getTime();
+  return Boolean(timestamp)&&Date.now()-timestamp>=0&&Date.now()-timestamp<=ALERT_VISIBLE_MS;
 }
 function retailerHref(item){
   const packages={"Amazon":"com.amazon.mShop.android.shopping","Walmart":"com.walmart.android","Target":"com.target.ui","Best Buy":"com.bestbuy.android"};
@@ -359,9 +366,10 @@ async function loadAlerts(){
     const res=await fetch(api("/api/alerts?t="+Date.now()),{cache:"no-store"});
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const items=((await res.json()).items||[]).sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));
-    const recent=items.filter(item=>isFreshDrop(item.created_at));
-    const earlierToday=items.filter(item=>isTodayLocal(item.created_at)&&!isFreshDrop(item.created_at));
-    const visible=showEarlierAlerts?[...recent,...earlierToday]:recent;
+    const recent=items.filter(item=>isVisibleLiveAlert(item.created_at));
+    const earlierToday=items.filter(item=>isTodayLocal(item.created_at)&&!isVisibleLiveAlert(item.created_at));
+    const olderVisible=showEarlierAlerts?earlierToday.slice(0,olderAlertsToShow):[];
+    const visible=[...recent,...olderVisible];
     list.innerHTML="";
     if(!visible.length){
       list.innerHTML=`<small>${earlierToday.length?"No drops in the last 30 minutes.":"No notifications recorded yet."}</small>`;
@@ -374,11 +382,21 @@ async function loadAlerts(){
         row.append(title,detail,time); list.appendChild(row);
       }
     }
-    if(earlierToday.length){
-      const toggle=document.createElement("button"); toggle.type="button"; toggle.className="alert-history-toggle secondary";
-      toggle.textContent=showEarlierAlerts?"Show recent only":`Show earlier today (${earlierToday.length})`;
-      toggle.onclick=()=>{showEarlierAlerts=!showEarlierAlerts;loadAlerts();};
-      list.appendChild(toggle);
+    if(earlierToday.length&&!showEarlierAlerts){
+      const reveal=document.createElement("button"); reveal.type="button"; reveal.className="alert-history-toggle secondary";
+      reveal.textContent=`View older alerts today (${earlierToday.length})`;
+      reveal.onclick=()=>{showEarlierAlerts=true;olderAlertsToShow=OLDER_ALERT_BATCH_SIZE;loadAlerts();};
+      list.appendChild(reveal);
+    }else if(showEarlierAlerts){
+      const summary=document.createElement("small"); summary.className="older-alert-summary";
+      summary.textContent=`Showing ${olderVisible.length} of ${earlierToday.length} earlier alerts from today.`;
+      list.appendChild(summary);
+      if(olderVisible.length<earlierToday.length){
+        const loadMore=document.createElement("button"); loadMore.type="button"; loadMore.className="alert-history-toggle secondary";
+        loadMore.textContent="Load 5 older alerts";
+        loadMore.onclick=()=>{olderAlertsToShow+=OLDER_ALERT_BATCH_SIZE;loadAlerts();};
+        list.appendChild(loadMore);
+      }
     }
   }catch(_){list.innerHTML="<small>Notification history is temporarily unavailable.</small>";}
 }
