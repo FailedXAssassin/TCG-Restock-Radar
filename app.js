@@ -584,10 +584,29 @@ function renderOwnerProducts(items,isOwner){
         await loadManagerControls(); loadFeed();
       }catch(error){$("#ownerMessage").textContent=error.message;}
     }; }
-    el.querySelector(".remove").onclick=async()=>{if(!confirm(`Remove ${item.product}?`))return; try{await ownerFetch(`/api/admin/products/${item.id}`,{method:"DELETE"}); await showOwner(); loadFeed();}catch(error){$("#ownerMessage").textContent=error.message;}};
+    el.querySelector(".remove").onclick=()=>requestProductRemoval(item);
     $("#ownerProducts").appendChild(el);
   }
 }
+let pendingRemoval=null;
+function requestProductRemoval(item){
+  pendingRemoval=item;
+  $("#removeProductName").textContent=item.product||"this product";
+  $("#removeProductDialog").showModal();
+}
+$("#cancelRemoveProduct").addEventListener("click",()=>{pendingRemoval=null;$("#removeProductDialog").close();});
+$("#confirmRemoveProduct").addEventListener("click",async()=>{
+  if(!pendingRemoval)return;
+  const item=pendingRemoval;
+  $("#confirmRemoveProduct").disabled=true;
+  try{
+    await ownerFetch(`/api/admin/products/${item.id}`,{method:"DELETE"});
+    $("#removeProductDialog").close(); pendingRemoval=null;
+    $("#ownerMessage").textContent=`${item.product} removed.`;
+    await loadManagerControls(); loadFeed();
+  }catch(error){$("#ownerMessage").textContent=error.message;}
+  finally{$("#confirmRemoveProduct").disabled=false;}
+});
 $("#ownerProductSearch").addEventListener("input",()=>renderOwnerProducts(ownerProductItems,ownerCanEditProducts));
 $("#ownerProductSort").addEventListener("change",()=>renderOwnerProducts(ownerProductItems,ownerCanEditProducts));
 $("#ownerBtn").addEventListener("click",showOwner);
