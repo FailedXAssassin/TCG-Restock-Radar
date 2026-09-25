@@ -1103,7 +1103,9 @@ def extract_image_url(text):
     """Return only a public image URL explicitly supplied by the page."""
     patterns = [
         r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)',
+        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
         r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)',
+        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']twitter:image["\']',
         r'["\']image["\']\s*:\s*["\'](https?://[^"\']+)',
     ]
     for pattern in patterns:
@@ -1112,6 +1114,21 @@ def extract_image_url(text):
             candidate = html.unescape(match.group(1)).strip()
             if candidate.startswith("https://"):
                 return candidate
+    return None
+
+
+async def fetch_official_product_image(url):
+    """Retrieve one public product-page image during an owner/moderator add."""
+    try:
+        response = await http_client.get(
+            url,
+            headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml"},
+            timeout=12,
+        )
+        if response.status_code == 200:
+            return extract_image_url(response.text)
+    except (httpx.HTTPError, RuntimeError):
+        pass
     return None
 
 
@@ -2353,6 +2370,10 @@ async def admin_products(authorization: str = Header(default="")):
 async def add_product(payload: dict, authorization: str = Header(default="")):
     require_product_manager(authorization)
     source = _clean_source({**payload, "published": False})
+    # One ordinary public page read gives newly staged items a thumbnail immediately.
+    image_url = await fetch_official_product_image(source["url"])
+    if image_url:
+        source["image_url"] = image_url
     sources = _all_sources()
     if any(source.get("url") == item.get("url") for item in sources):
         raise HTTPException(status_code=409, detail="That product URL is already being monitored")
