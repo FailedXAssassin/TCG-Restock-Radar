@@ -411,6 +411,23 @@ async function loadHealth(){
   }catch(err){$("#healthGrid").innerHTML=`<div class="status card">Retailer health unavailable: ${err.message}</div>`}
 }
 
+async function loadRecentlyMissed(){
+  const list=$("#recentlyMissed");
+  try{
+    const res=await fetch(api("/api/recently-missed?t="+Date.now()),{cache:"no-store"});
+    if(!res.ok)throw new Error();
+    const items=(await res.json()).items||[];
+    list.innerHTML="";
+    if(!items.length){list.innerHTML="<small>No confirmed drops have sold out recently.</small>";return;}
+    for(const item of items){
+      const row=document.createElement("a");row.className="alert-row missed-alert";row.href=item.url||"#";row.target="_blank";row.rel="noopener";
+      const title=document.createElement("strong");title.textContent=item.product||"Product";
+      const detail=document.createElement("span");detail.textContent=`${item.store||"Retailer"} • was confirmed in stock, now sold out`;
+      const time=document.createElement("time");time.textContent=item.created_at?`Dropped ${formatDropTime(item.created_at)}`:"Recently";
+      row.append(title,detail,time);list.appendChild(row);
+    }
+  }catch(_){list.innerHTML="<small>Recently missed is temporarily unavailable.</small>";}
+}
 async function loadAlerts(){
   const list=$("#alertHistory");
   try{
@@ -450,6 +467,7 @@ async function loadAlerts(){
       }
     }
   }catch(_){list.innerHTML="<small>Notification history is temporarily unavailable.</small>";}
+  loadRecentlyMissed();
 }
 const HELP_THREAD_KEY="tcg-radar-help-thread";
 const HELP_CLIENT_KEY="tcg-radar-help-client";
@@ -746,7 +764,8 @@ const MUTED_STORES_KEY="tcg-radar-muted-stores";
 function thirdPartyAlertsAllowed(){return localStorage.getItem(THIRD_PARTY_ALERTS_KEY)==="true";}
 function mutedProducts(){try{return new Set(JSON.parse(localStorage.getItem(MUTED_PRODUCTS_KEY)||"[]"));}catch(_){return new Set();}}
 function mutedStoresUntil(){try{const saved=JSON.parse(localStorage.getItem(MUTED_STORES_KEY)||"{}");const now=Date.now();for(const [store,until] of Object.entries(saved)){if(Number(until)<=now)delete saved[store];}localStorage.setItem(MUTED_STORES_KEY,JSON.stringify(saved));return saved;}catch(_){return {};}}
-function alertPreferences(){return {max_markup:personalMarkup(),games:storedChoices(ALERT_GAMES_KEY,["Pokemon","One Piece","Magic"]),stores:storedChoices(ALERT_STORES_KEY,["Walmart","Target","Amazon","Best Buy"]),allow_third_party:thirdPartyAlertsAllowed(),muted_product_ids:[...mutedProducts()],muted_stores_until:mutedStoresUntil()};}
+function quietHours(){try{return JSON.parse(localStorage.getItem("tcg-radar-quiet-hours")||'{"enabled":false,"start_minute":1320,"end_minute":480}');}catch(_){return {enabled:false,start_minute:1320,end_minute:480};}}
+function alertPreferences(){const quiet=quietHours();return {max_markup:personalMarkup(),games:storedChoices(ALERT_GAMES_KEY,["Pokemon","One Piece","Magic"]),stores:storedChoices(ALERT_STORES_KEY,["Walmart","Target","Amazon","Best Buy"]),allow_third_party:thirdPartyAlertsAllowed(),quiet_hours:{...quiet,timezone_offset:new Date().getTimezoneOffset()},muted_product_ids:[...mutedProducts()],muted_stores_until:mutedStoresUntil()};}
 function updateThirdPartyAlertsButton(){
   const button=$("#thirdPartyAlertsBtn"); if(!button)return;
   const enabled=thirdPartyAlertsAllowed();
@@ -800,7 +819,8 @@ $("#thirdPartyAlertsBtn").addEventListener("click",async()=>{
   localStorage.setItem(selector==="#settingsGames"?ALERT_GAMES_KEY:ALERT_STORES_KEY,JSON.stringify(checked));
   try{const registration=await navigator.serviceWorker.ready;const subscription=await registration.pushManager.getSubscription();if(subscription) await savePushSubscription(subscription);}catch(_){}
 }));
-$("#alertSettingsForm").addEventListener("submit",async event=>{ event.preventDefault(); await savePersonalMarkup($("#personalMarkup").value); $("#alertSettingsMessage").textContent="Saved for this phone."; setTimeout(()=>$("#alertSettingsDialog").close(),500); });
+$("#quietHoursEnabled").addEventListener("change",event=>{$("#quietHoursFields").hidden=!event.target.checked;});
+$("#alertSettingsForm").addEventListener("submit",async event=>{ event.preventDefault(); const quiet={enabled:$("#quietHoursEnabled").checked,start_minute:Number($("#quietStart").value),end_minute:Number($("#quietEnd").value)}; localStorage.setItem("tcg-radar-quiet-hours",JSON.stringify(quiet)); await savePersonalMarkup($("#personalMarkup").value); $("#alertSettingsMessage").textContent=quiet.enabled?"Saved. Alerts will stay in history during quiet hours.":"Saved for this phone."; setTimeout(()=>$("#alertSettingsDialog").close(),700); });
 
 function switchPage(page){
   activePage=page;
