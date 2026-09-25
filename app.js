@@ -513,9 +513,10 @@ async function renderPurchases(){const list=$("#purchaseList"); list.innerHTML="
 async function configureGoogleSignIn(){try{const config=await fetch(api("/api/auth/config"),{cache:"no-store"}).then(r=>r.json()); if(!config.enabled){$("#accountStatus").textContent="Google sign-in is being configured.";return;} if(googleToken){accountUser=await fetch(api("/api/auth/me"),{headers:accountHeaders()}).then(r=>r.ok?r.json():null);if(accountUser){renderPurchases();return;}googleToken="";sessionStorage.removeItem("tcg-radar-google-token");} if(!window.google?.accounts?.id){setTimeout(configureGoogleSignIn,500);return;} window.google.accounts.id.initialize({client_id:config.client_id,callback:credential=>{saveGoogleToken(credential.credential);fetch(api("/api/auth/me"),{headers:accountHeaders()}).then(r=>r.ok?r.json():null).then(user=>{if(!user){saveGoogleToken("");throw new Error("Google sign-in was not accepted");}accountUser=user;updateManagerButton();renderPurchases();loadFeed();if($("#accountDialog").open) $("#accountDialog").close();}).catch(error=>{$("#accountStatus").textContent=error.message;});},});$("#googleSignIn").innerHTML="";window.google.accounts.id.renderButton($("#googleSignIn"),{theme:"filled_black",size:"large",shape:"pill",text:"signin_with"});}catch(_){$("#accountStatus").textContent="Google sign-in is temporarily unavailable.";}}
 function openPurchases(){ $("#purchasesDialog").showModal(); $("#purchaseDate").value=new Date().toISOString().slice(0,10); configureGoogleSignIn(); renderPurchases(); }
 function openAccount(){
-  // Google renders once during startup. Re-rendering it after showModal() changes
-  // the dialog height and causes Android to recenter/jump the popup.
   $("#accountDialog").showModal();
+  // The Google control must be rendered after its dialog becomes visible.
+  // The dialog now reserves its full height, so this no longer shifts on Android.
+  requestAnimationFrame(()=>configureGoogleSignIn());
   renderPurchases();
 }
 function signOut(){ saveGoogleToken(""); accountUser=null; clearManagerSecret(); managerRole=""; healthAllowed=false; localStorage.removeItem(MANAGER_MODE_KEY); updateManagerButton(); $("#googleSignIn").innerHTML=""; $("#googleSignIn").hidden=false; configureGoogleSignIn(); renderPurchases(); loadFeed(); }
