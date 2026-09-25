@@ -225,7 +225,7 @@ function render(){
   $("#activeCount").textContent=rows.length;
   const newestConfirmed=confirmed.sort((a,b)=>new Date(b.notification_at||b.checked_at||0)-new Date(a.notification_at||a.checked_at||0))[0];
   $("#latestVerified").textContent=newestConfirmed ? `${newestConfirmed.store}: ${newestConfirmed.product}` : "No confirmed retail stock";
-  if(!filtered.length) resultContainer.innerHTML=`<div class="status card">${viewMode==="local"?"No confirmed nearby stock yet. We keep it unknown instead of guessing.":"Nothing matches these filters yet. Try a higher markup limit, more retailers, or another game."}</div>`;
+  if(!filtered.length) resultContainer.innerHTML=`<div class="status card">${viewMode==="local"?"No confirmed nearby stock yet. We keep it unknown instead of guessing.":(!canManageFeed&&rows.length===0?"No live drops in the last 30 minutes. The tracking catalog is visible only in Manager Tools.":"Nothing matches these filters yet. Try a higher markup limit, more retailers, or another game.")}</div>`;
 }
 
 function setMode(mode){
@@ -328,7 +328,7 @@ $("#radiusFilter").addEventListener("change",()=>{if(!localSearch)return;if(loca
 async function loadFeed(){
   $("#statusBox").textContent="Checking latest feed…";
   try{
-    const managerToken=sessionStorage.getItem("tcg-radar-manager-secret");
+    const managerToken=managerSecret();
     const res=await fetch(`${API_BASE}api/feed?t=${Date.now()}`,{cache:"no-store",headers:managerToken?{Authorization:`Bearer ${managerToken}`}:{}});
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data=await res.json();
@@ -454,18 +454,21 @@ $("#cancelFiltersBtn").addEventListener("click",()=>{setFilters(appliedFilters);
 $("#refreshBtn").addEventListener("click",loadFeed);
 $("#sortMode").addEventListener("change",event=>{localStorage.setItem(SORT_MODE_KEY,event.target.value);render();});
 const ADMIN_KEY="tcg-radar-manager-secret";
+const PERSISTENT_MANAGER_KEY="tcg-radar-manager-secret-persistent";
 const MANAGER_MODE_KEY="tcg-radar-manager-mode";
 let managerRole="";
+function managerSecret(){return sessionStorage.getItem(ADMIN_KEY)||localStorage.getItem(PERSISTENT_MANAGER_KEY)||"";}
+function clearManagerSecret(){sessionStorage.removeItem(ADMIN_KEY);localStorage.removeItem(PERSISTENT_MANAGER_KEY);}
 let priorityAutomation={auto_high_priority:false,top_limit:20,trend_source:"not_configured",auto_selected_product_ids:[]};
 let helpPollTimer=null, lastHelpMessageId="";
-function updateManagerButton(){ $("#ownerBtn").hidden=!(location.search.includes("manager=1")||sessionStorage.getItem(ADMIN_KEY)||localStorage.getItem(MANAGER_MODE_KEY)); }
+function updateManagerButton(){ $("#ownerBtn").hidden=!(location.search.includes("manager=1")||managerSecret()||localStorage.getItem(MANAGER_MODE_KEY)); }
 updateManagerButton();
 function api(path){ return `${API_BASE}${path.replace(/^\//,"")}`; }
 async function ownerFetch(path, options={}){
-  const secret=sessionStorage.getItem(ADMIN_KEY);
+  const secret=managerSecret();
   if(!secret) throw new Error("A manager code is required");
   const response=await fetch(api(path),{...options,headers:{Authorization:`Bearer ${secret}`,"Content-Type":"application/json",...(options.headers||{})}});
-  if(response.status===401){ sessionStorage.removeItem(ADMIN_KEY); throw new Error("That owner or moderator code was not accepted"); }
+  if(response.status===401){ clearManagerSecret(); throw new Error("That owner or moderator code was not accepted"); }
   if(!response.ok){ const data=await response.json().catch(()=>({})); throw new Error(data.detail||`HTTP ${response.status}`); }
   return response.status===204?null:response.json();
 }
@@ -505,15 +508,15 @@ async function loadManagerControls(){
     $("#adminOverview").hidden=false; $("#adminRole").textContent=managerRole==="owner"?"Owner session":"Moderator session"; $("#adminProductCount").textContent=(data.items||[]).length; $("#adminAccess").textContent=managerRole==="owner"?"Full command access":"Product links only";
     if(managerRole==="owner"){await loadModerators(); await loadHelpInbox(); await loadIntakeSources(); clearInterval(helpPollTimer); helpPollTimer=setInterval(loadHelpInbox,20000);}
     $("#ownerMessage").textContent=managerRole==="owner"?"Owner access: messages and moderator controls are available.":"Moderator access: you can add and remove public product URLs.";
-  }catch(error){sessionStorage.removeItem(ADMIN_KEY); $("#managerLogin").hidden=false; $("#adminOverview").hidden=true; $("#ownerMessage").textContent=error.message;}
+  }catch(error){$("#managerLogin").hidden=false; $("#adminOverview").hidden=true; $("#ownerMessage").textContent=error.message;}
 }
 function showOwner(){
   $("#ownerDialog").showModal(); $("#managerLogin").hidden=false; $("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true; $("#managerCode").value=""; $("#ownerMessage").textContent="Enter a manager code to unlock these controls.";
-  if(sessionStorage.getItem(ADMIN_KEY)) loadManagerControls();
+  if(managerSecret()) loadManagerControls();
 }
 $("#cancelManager").addEventListener("click",()=>{ $("#ownerDialog").close(); });
-$("#unlockManager").addEventListener("click",async()=>{const code=$("#managerCode").value.trim(); if(!code){$("#ownerMessage").textContent="Enter a manager code first."; return;} sessionStorage.setItem(ADMIN_KEY,code); $("#ownerMessage").textContent="Checking code…"; await loadManagerControls();});
-$("#lockManagerBtn").addEventListener("click",()=>{clearInterval(helpPollTimer); sessionStorage.removeItem(ADMIN_KEY); localStorage.removeItem(MANAGER_MODE_KEY); managerRole=""; healthAllowed=false; loadFeed(); $("#healthSection").hidden=true; updateManagerButton(); $("#managerLogin").hidden=false; $("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true; $("#managerCode").value=""; $("#ownerMessage").textContent="Manager controls locked.";});
+$("#unlockManager").addEventListener("click",async()=>{const code=$("#managerCode").value.trim(); if(!code){$("#ownerMessage").textContent="Enter a manager code first."; return;} sessionStorage.setItem(ADMIN_KEY,code); localStorage.setItem(PERSISTENT_MANAGER_KEY,code); $("#ownerMessage").textContent="Checking code…"; await loadManagerControls();});
+$("#lockManagerBtn").addEventListener("click",()=>{clearInterval(helpPollTimer); clearManagerSecret(); localStorage.removeItem(MANAGER_MODE_KEY); managerRole=""; healthAllowed=false; loadFeed(); $("#healthSection").hidden=true; updateManagerButton(); $("#managerLogin").hidden=false; $("#productForm").hidden=true; $("#ownerOnlyControls").hidden=true; $("#managerCode").value=""; $("#ownerMessage").textContent="Manager controls locked.";});
 async function loadHelpInbox(){
   try{const items=(await ownerFetch("/api/admin/help")).items||[]; const list=$("#ownerHelp"); list.innerHTML=""; if(!items.length){list.innerHTML="<small>No help messages yet.</small>";return;} const threads=new Map(); for(const item of items){if(!threads.has(item.thread_id))threads.set(item.thread_id,item);} for(const item of threads.values()){const row=document.createElement("div"); row.className="owner-help-row"; const message=document.createElement("small"); message.textContent=`${item.body} • ${new Date(item.created_at).toLocaleString()}`; const reply=document.createElement("textarea"); reply.rows=2; reply.maxLength=1000; reply.placeholder="Reply to this user…"; const actions=document.createElement("div"); actions.className="help-owner-actions"; const button=document.createElement("button"); button.type="button"; button.textContent="Reply"; button.onclick=async()=>{if(!reply.value.trim())return; await ownerFetch(`/api/admin/help/${encodeURIComponent(item.thread_id)}/reply`,{method:"POST",body:JSON.stringify({body:reply.value})}); reply.value=""; await loadHelpInbox();}; const ban=document.createElement("button"); ban.type="button"; ban.className="secondary danger-button"; ban.textContent="Ban device"; ban.onclick=async()=>{if(!confirm("Block this device from sending more help messages?"))return; await ownerFetch(`/api/admin/help/${encodeURIComponent(item.client_id)}/ban`,{method:"POST"}); row.remove();}; actions.append(button,ban); row.append(message,reply,actions); list.appendChild(row); if(lastHelpMessageId&&item.id!==lastHelpMessageId&&item.sender==="user"&&Notification.permission==="granted")new Notification("TCG Radar help request",{body:item.body}); lastHelpMessageId=item.id;}}
   catch(error){$("#ownerMessage").textContent=error.message;}
