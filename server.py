@@ -979,6 +979,14 @@ def _clean_push_preferences(payload):
     games = [str(item) for item in payload.get("games", []) if str(item) in allowed_games]
     stores = [str(item) for item in payload.get("stores", []) if str(item) in allowed_stores]
     allow_third_party = bool(payload.get("allow_third_party", False))
+    quiet_hours = payload.get("quiet_hours", {})
+    quiet_hours = quiet_hours if isinstance(quiet_hours, dict) else {}
+    quiet_enabled = bool(quiet_hours.get("enabled", False))
+    quiet_start = int(safe_float(quiet_hours.get("start_minute"), 1320) or 1320) % 1440
+    quiet_end = int(safe_float(quiet_hours.get("end_minute"), 480) or 480) % 1440
+    quiet_offset = int(safe_float(quiet_hours.get("timezone_offset"), 0) or 0)
+    if quiet_offset < -840 or quiet_offset > 840:
+        quiet_offset = 0
     muted_product_ids = [str(item)[:200] for item in payload.get("muted_product_ids", []) if str(item).strip()][:500]
     raw_store_mutes = payload.get("muted_stores_until", {})
     muted_stores_until = {}
@@ -987,7 +995,7 @@ def _clean_push_preferences(payload):
             timestamp = safe_float(until)
             if str(store) in allowed_stores and timestamp is not None and timestamp > time.time():
                 muted_stores_until[str(store)] = int(timestamp)
-    return {"max_markup": max_markup, "games": games, "stores": stores, "allow_third_party": allow_third_party, "muted_product_ids": muted_product_ids, "muted_stores_until": muted_stores_until}
+    return {"max_markup": max_markup, "games": games, "stores": stores, "allow_third_party": allow_third_party, "quiet_hours": {"enabled": quiet_enabled, "start_minute": quiet_start, "end_minute": quiet_end, "timezone_offset": quiet_offset}, "muted_product_ids": muted_product_ids, "muted_stores_until": muted_stores_until}
 
 
 def _alert_history():
@@ -1174,13 +1182,9 @@ async def notify_transition(item):
     expired = []
     for subscription in _subscriptions():
         preference = _clean_push_preferences(subscription.get("preferences"))
-        if preference["games"] and item.get("game") not in preference["games"]:
-            continue
-        if preference["stores"] and item.get("store") not in preference["stores"]:
+        if not _matches_push_preferences(subscription, item):
             continue
         if marketplace_restock and not preference["allow_third_party"]:
-            continue
-        if markup is not None and markup > preference["max_markup"]:
             continue
         if await asyncio.to_thread(_send_web_push, subscription, payload):
             expired.append(subscription.get("endpoint"))
@@ -2299,6 +2303,29 @@ async def alert_history():
     return {"items": _alert_history()}
 
 
+@app.get("/api/recently-missed")
+async def recently_missed():
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=6)
+    current = {item.get("id"): _feed_item_for_source(item) for item in load_sources()}
+    result, seen = [], set()
+    for event in _alert_history():
+        product_id = event.get("product_id")
+        if product_id in seen:
+            continue
+        try:
+            created = datetime.fromisoformat(str(event.get("created_at", "")).replace("Z", "+00:00"))
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+        except (TypeError, ValueError):
+            continue
+        live = current.get(product_id, {})
+        if created >= cutoff and live.get("status") == "sold_out":
+            seen.add(product_id)
+            result.append({**event, "sold_out_at": live.get("checked_at") or now_iso()})
+    result.sort(key=lambda item: item.get("created_at", ""), reverse=True)
+    return {"items": result[:12]}
+
+
 @app.get("/api/auth/config")
 async def auth_config():
     return {"enabled": bool(GOOGLE_CLIENT_ID), "client_id": GOOGLE_CLIENT_ID or None}
@@ -2731,8 +2758,19 @@ async def delete_moderator(moderator_id: str, authorization: str = Header(defaul
     _write_moderators(kept)
 
 
+def _quiet_hours_active(quiet_hours):
+    if not quiet_hours.get("enabled") or quiet_hours.get("start_minute") == quiet_hours.get("end_minute"):
+        return False
+    now = datetime.now(timezone.utc)
+    minute = (now.hour * 60 + now.minute - int(quiet_hours.get("timezone_offset", 0))) % 1440
+    start, end = int(quiet_hours["start_minute"]), int(quiet_hours["end_minute"])
+    return start <= minute < end if start < end else (minute >= start or minute < end)
+
+
 def _matches_push_preferences(subscription, item):
     preference = _clean_push_preferences(subscription.get("preferences"))
+    if _quiet_hours_active(preference.get("quiet_hours", {})):
+        return False
     if preference["games"] and item.get("game") not in preference["games"]:
         return False
     if preference["stores"] and item.get("store") not in preference["stores"]:
