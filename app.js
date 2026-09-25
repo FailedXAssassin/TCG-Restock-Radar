@@ -95,9 +95,17 @@ function render(){
     groups.get(key).push(item);
   }
   const selections=retailerSelections();
+  const offerPriority=offer=>{
+    if(offer.status==="in_stock"&&offer.official_seller_verified)return 0;
+    if(offer.official_seller_verified)return 1;
+    if(offer.status==="marketplace_in_stock")return 3;
+    return 2;
+  };
   const displayItems=[...groups.entries()].map(([key,offers])=>{
-    const selected=offers.find(offer=>offer.id===selections[key])||offers[0];
-    return {...selected,retailer_offers:offers,catalog_key:key};
+    const orderedOffers=[...offers].sort((left,right)=>offerPriority(left)-offerPriority(right));
+    const directLive=orderedOffers.find(offer=>offer.status==="in_stock"&&offer.official_seller_verified);
+    const selected=directLive||orderedOffers.find(offer=>offer.id===selections[key])||orderedOffers[0];
+    return {...selected,retailer_offers:orderedOffers,catalog_key:key};
   });
   const resultContainer=viewMode==="local"?$("#localResults"):$("#results");
   resultContainer.innerHTML="";
@@ -116,7 +124,7 @@ function render(){
     node.querySelector(".store").textContent=item.store;
     node.querySelector(".product-status").textContent=statusLabels[item.status]||item.status||"Unknown";
     node.querySelector(".product-status").classList.add(item.status||"unknown");
-    node.querySelector(".seller").textContent=item.status==="marketplace_in_stock"?`Third-party: ${item.seller||"Marketplace seller"}`:(item.seller?`Seller: ${item.seller}`:"");
+    node.querySelector(".seller").textContent=item.status==="marketplace_in_stock"?`3rd party: ${item.seller||"Marketplace seller"}`:(item.seller?`Seller: ${item.seller}`:"");
     node.querySelector(".price").textContent=money(item.price);
     node.querySelector(".msrp").textContent=money(item.msrp);
     const m=markupPct(item), el=node.querySelector(".markup");
@@ -130,7 +138,8 @@ function render(){
       const selector=document.createElement("select"); selector.className="retailer-offer-select"; selector.setAttribute("aria-label","Choose retailer listing");
       for(const offer of item.retailer_offers){
         const option=document.createElement("option"); option.value=offer.id; option.selected=offer.id===item.id;
-        option.textContent=`${offer.store} • ${money(offer.price)} • ${statusLabels[offer.status]||offer.status||"Unknown"}`;
+        const offerKind=offer.status==="marketplace_in_stock"?"3rd party":(offer.official_seller_verified?"Retailer-direct":(statusLabels[offer.status]||offer.status||"Unknown"));
+        option.textContent=`${offer.store} • ${money(offer.price)} • ${offerKind}`;
         selector.appendChild(option);
       }
       selector.onchange=()=>{const saved=retailerSelections();saved[item.catalog_key]=selector.value;localStorage.setItem(RETAILER_SELECTION_KEY,JSON.stringify(saved));render();};
@@ -437,11 +446,20 @@ const ALERT_GAMES_KEY="tcg-radar-alert-games";
 const ALERT_STORES_KEY="tcg-radar-alert-stores";
 function personalMarkup(){ return Number(localStorage.getItem(PERSONAL_MARKUP_KEY)||80); }
 function storedChoices(key, fallback){try{const value=JSON.parse(localStorage.getItem(key)||"");return Array.isArray(value)&&value.length?value:fallback;}catch(_){return fallback;}}
-function alertPreferences(){return {max_markup:personalMarkup(),games:storedChoices(ALERT_GAMES_KEY,["Pokemon","One Piece","Magic"]),stores:storedChoices(ALERT_STORES_KEY,["Walmart","Target","Amazon","Best Buy"])};}
+const THIRD_PARTY_ALERTS_KEY="tcg-radar-third-party-alerts";
+function thirdPartyAlertsAllowed(){return localStorage.getItem(THIRD_PARTY_ALERTS_KEY)==="true";}
+function alertPreferences(){return {max_markup:personalMarkup(),games:storedChoices(ALERT_GAMES_KEY,["Pokemon","One Piece","Magic"]),stores:storedChoices(ALERT_STORES_KEY,["Walmart","Target","Amazon","Best Buy"]),allow_third_party:thirdPartyAlertsAllowed()};}
+function updateThirdPartyAlertsButton(){
+  const button=$("#thirdPartyAlertsBtn"); if(!button)return;
+  const enabled=thirdPartyAlertsAllowed();
+  button.querySelector("strong").textContent=enabled?"Don't allow 3rd party":"Allow 3rd party";
+  button.querySelector("small").textContent=enabled?"Alerts include eligible 3rd-party offers within your price limit":"3rd-party offers are visible, but only retailer-direct stock can alert";
+}
 function hydrateAlertChoices(){
   const prefs=alertPreferences();
   document.querySelectorAll("#settingsGames input").forEach(input=>input.checked=prefs.games.includes(input.value));
   document.querySelectorAll("#settingsStores input").forEach(input=>input.checked=prefs.stores.includes(input.value));
+  updateThirdPartyAlertsButton();
 }
 function base64UrlToBytes(value){ const padded=value.replace(/-/g,"+").replace(/_/g,"/")+"=".repeat((4-value.length%4)%4); const raw=atob(padded); return Uint8Array.from(raw,c=>c.charCodeAt(0)); }
 async function savePushSubscription(subscription){
@@ -473,6 +491,11 @@ async function savePersonalMarkup(value){
   try{const registration=await navigator.serviceWorker.ready;const subscription=await registration.pushManager.getSubscription();if(subscription) await savePushSubscription(subscription);}catch(_){}
 }
 $("#settingsMarkup").addEventListener("change",()=>savePersonalMarkup($("#settingsMarkup").value));
+$("#thirdPartyAlertsBtn").addEventListener("click",async()=>{
+  localStorage.setItem(THIRD_PARTY_ALERTS_KEY,String(!thirdPartyAlertsAllowed()));
+  updateThirdPartyAlertsButton();
+  try{const registration=await navigator.serviceWorker.ready;const subscription=await registration.pushManager.getSubscription();if(subscription)await savePushSubscription(subscription);}catch(_){}
+});
 ["#settingsGames","#settingsStores"].forEach(selector=>$(selector).addEventListener("change",async event=>{
   const container=$(selector), checked=[...container.querySelectorAll("input:checked")].map(input=>input.value);
   if(!checked.length){event.target.checked=true;return;}
