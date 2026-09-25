@@ -168,3 +168,9 @@ body:before{right:50%;bottom:12vh;transform:translateX(50%);width:min(82vw,460px
 .owner-product-image{width:48px;height:48px;flex:0 0 48px;object-fit:contain;border-radius:10px;background:#fff;padding:3px}
 .owner-product>span{min-width:0;flex:1}
 @media (max-width:560px){.owner-product-image{width:42px;height:42px;flex-basis:42px}.owner-product{align-items:flex-start}}
+
+
+.owner-list-controls{display:flex;gap:9px;margin:12px 0;align-items:center}
+.owner-list-controls input{min-width:0;flex:1}
+.owner-list-controls select{min-width:124px}
+@media (max-width:560px){.owner-list-controls{align-items:stretch;flex-direction:column}.owner-list-controls select{width:100%}}
