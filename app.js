@@ -101,6 +101,30 @@ function recordRetailerLinkClick(item){
   if(!item?.store||!item?.url) return;
   fetch(api("/api/analytics/link-click"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({retailer:item.store}),keepalive:true}).catch(()=>{});
 }
+async function syncMutePreferences(){
+  try{const registration=await navigator.serviceWorker.ready;const subscription=await registration.pushManager.getSubscription();if(subscription)await savePushSubscription(subscription);}catch(_){}
+}
+function toggleProductMute(productKey,productName){
+  const muted=mutedProducts(); muted.has(productKey)?muted.delete(productKey):muted.add(productKey);
+  localStorage.setItem(MUTED_PRODUCTS_KEY,JSON.stringify([...muted])); syncMutePreferences(); render();
+  $("#toastMessage").textContent=muted.has(productKey)?`${productName} muted for future alerts.`:`${productName} alerts restored.`;
+}
+function toggleStoreMute(store){
+  const muted=mutedStoresUntil();
+  if(Number(muted[store]||0)>Date.now())delete muted[store];
+  else {const tomorrow=new Date();tomorrow.setHours(24,0,0,0);muted[store]=tomorrow.getTime();}
+  localStorage.setItem(MUTED_STORES_KEY,JSON.stringify(muted)); syncMutePreferences(); render();
+  $("#toastMessage").textContent=muted[store]?`${store} alerts muted until tomorrow.`:`${store} alerts restored.`;
+}
+function showWhyAlert(item){
+  $("#whyAlertProduct").textContent=item.product||"This item";
+  $("#whySeller").textContent=item.official_seller_verified?"Retailer-direct seller verified.":(item.seller?`Seller shown: ${item.seller}`:"Seller verification is unavailable.");
+  $("#whyChecks").textContent=item.status==="in_stock"?"Passed TCG Radar’s consecutive-check confirmation rule.":"This listing is visible, but its stock is not fully confirmed.";
+  const markup=markupPct(item);
+  $("#whyPrice").textContent=markup==null?"Price is shown without a comparable MSRP.":`${money(item.price)} is ${markup.toFixed(0)}% from MSRP and within your current alert limit of ${personalMarkup()}%.`;
+  $("#whyTime").textContent=item.checked_at?`Last checked ${formatDropTime(item.checked_at)}.`:(item.notification_at?`Alert sent ${formatDropTime(item.notification_at)}.`:"Recently added to the live feed.");
+  $("#whyAlertDialog").showModal();
+}
 function render(){
   const game=appliedFilters.gameFilter??$("#gameFilter").value;
   const retailer=appliedFilters.retailerFilter??$("#retailerFilter").value, status=appliedFilters.statusFilter??$("#statusFilter").value;
@@ -206,6 +230,16 @@ function render(){
       selector.onchange=()=>{const saved=retailerSelections();saved[item.catalog_key]=selector.value;localStorage.setItem(RETAILER_SELECTION_KEY,JSON.stringify(saved));render();};
       buy.parentElement.insertBefore(selector,buy);
     }
+    const why=node.querySelector(".why-alert");
+    why.onclick=()=>showWhyAlert(item);
+    const muteItem=node.querySelector(".mute-item");
+    const mutedKey=item.catalog_key||item.id;
+    muteItem.textContent=mutedProducts().has(mutedKey)?"Unmute item":"Mute item";
+    muteItem.onclick=()=>toggleProductMute(mutedKey,item.product);
+    const muteStore=node.querySelector(".mute-store");
+    const storeMuted=Number(mutedStoresUntil()[item.store]||0)>Date.now();
+    muteStore.textContent=storeMuted?`Unmute ${item.store}`:`Mute ${item.store} today`;
+    muteStore.onclick=()=>toggleStoreMute(item.store);
     const watch=node.querySelector(".watch"), watched=watchlist().has(item.id);
     watch.textContent=watched?"★":"☆"; watch.classList.toggle("watched",watched); watch.setAttribute("aria-label",watched?"Remove from watchlist":"Add to watchlist");
     watch.onclick=()=>{const items=watchlist();items.has(item.id)?items.delete(item.id):items.add(item.id);saveWatchlist(items);updateWatchlistButton();render();};
@@ -612,6 +646,7 @@ $("#ownerProductSort").addEventListener("change",()=>renderOwnerProducts(ownerPr
 $("#ownerBtn").addEventListener("click",showOwner);
 if(new URLSearchParams(location.search).has("manager")) setTimeout(showOwner,0);
 $("#closeOwnerBtn").addEventListener("click",()=>$("#ownerDialog").close());
+$("#closeWhyAlert").addEventListener("click",()=>$("#whyAlertDialog").close());
 $("#testPushBtn").addEventListener("click",async()=>{ $("#ownerMessage").textContent="Test scheduled—close TCG Radar completely now."; try{const result=await ownerFetch("/api/admin/push/test",{method:"POST"}); $("#ownerMessage").textContent=result.attempted?"Test scheduled for 10 seconds. Close TCG Radar completely now.":"No phones are subscribed yet—tap Enable Push Alerts on the main screen first.";}catch(error){$("#ownerMessage").textContent=error.message;} });
 $("#intakeSourceForm").addEventListener("submit",async event=>{
   event.preventDefault();
@@ -704,8 +739,12 @@ const ALERT_STORES_KEY="tcg-radar-alert-stores";
 function personalMarkup(){ return Number(localStorage.getItem(PERSONAL_MARKUP_KEY)||80); }
 function storedChoices(key, fallback){try{const value=JSON.parse(localStorage.getItem(key)||"");return Array.isArray(value)&&value.length?value:fallback;}catch(_){return fallback;}}
 const THIRD_PARTY_ALERTS_KEY="tcg-radar-third-party-alerts";
+const MUTED_PRODUCTS_KEY="tcg-radar-muted-products";
+const MUTED_STORES_KEY="tcg-radar-muted-stores";
 function thirdPartyAlertsAllowed(){return localStorage.getItem(THIRD_PARTY_ALERTS_KEY)==="true";}
-function alertPreferences(){return {max_markup:personalMarkup(),games:storedChoices(ALERT_GAMES_KEY,["Pokemon","One Piece","Magic"]),stores:storedChoices(ALERT_STORES_KEY,["Walmart","Target","Amazon","Best Buy"]),allow_third_party:thirdPartyAlertsAllowed()};}
+function mutedProducts(){try{return new Set(JSON.parse(localStorage.getItem(MUTED_PRODUCTS_KEY)||"[]"));}catch(_){return new Set();}}
+function mutedStoresUntil(){try{const saved=JSON.parse(localStorage.getItem(MUTED_STORES_KEY)||"{}");const now=Date.now();for(const [store,until] of Object.entries(saved)){if(Number(until)<=now)delete saved[store];}localStorage.setItem(MUTED_STORES_KEY,JSON.stringify(saved));return saved;}catch(_){return {};}}
+function alertPreferences(){return {max_markup:personalMarkup(),games:storedChoices(ALERT_GAMES_KEY,["Pokemon","One Piece","Magic"]),stores:storedChoices(ALERT_STORES_KEY,["Walmart","Target","Amazon","Best Buy"]),allow_third_party:thirdPartyAlertsAllowed(),muted_product_ids:[...mutedProducts()],muted_stores_until:mutedStoresUntil()};}
 function updateThirdPartyAlertsButton(){
   const button=$("#thirdPartyAlertsBtn"); if(!button)return;
   const enabled=thirdPartyAlertsAllowed();
