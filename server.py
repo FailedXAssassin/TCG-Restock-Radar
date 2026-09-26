@@ -2279,10 +2279,10 @@ async def local_scan(payload: dict, authorization: str = Header(default="")):
         raise HTTPException(status_code=422, detail="Choose a 5, 10, 20, or 50 mile radius")
     if http_client is None:
         raise HTTPException(status_code=503, detail="Local Radar is starting; try again shortly")
-    _enforce_local_scan_cooldown(client_id)
-
     role = _manager_role_or_none(authorization)
     is_manager = role in {"owner", "moderator", "google_owner"}
+    if not is_manager:
+        _enforce_local_scan_cooldown(client_id)
     remaining = None
     if not is_manager and not _valid_local_zip_session(client_id, zip_code, session_id):
         session_id, remaining = _start_local_zip_session(client_id, zip_code, False)
