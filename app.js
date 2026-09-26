@@ -1111,14 +1111,41 @@ $("#closeReportBtn").addEventListener("click",()=>$("#reportDialog").close());
 document.querySelectorAll("[data-report]").forEach(button=>button.addEventListener("click",async()=>{if(!reportProductId)return;$("#reportMessage").textContent="Sending…";try{const response=await fetch(api("/api/reports"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({product_id:reportProductId,reason:button.dataset.report})});if(!response.ok)throw new Error("Report could not be saved");$("#reportMessage").textContent="Thanks — it was saved for review.";setTimeout(()=>$("#reportDialog").close(),650);}catch(error){$("#reportMessage").textContent=error.message;}}));
 $("#statusHelpBtn").addEventListener("click",()=>$("#statusHelpDialog").showModal());
 $("#closeStatusHelpBtn").addEventListener("click",()=>$("#statusHelpDialog").close());
-$("#startSetupBtn").addEventListener("click",()=>{openSettings();$("#welcomeGuide").open=false;});
-
 const WELCOME_GUIDE_KEY="tcg-radar-welcome-guide-dismissed";
 const welcomeGuide=$("#welcomeGuide");
-let welcomeGuideOpened=false;
+function dismissWelcomeGuide(){localStorage.setItem(WELCOME_GUIDE_KEY,"1");welcomeGuide.hidden=true;}
+function openQuickStart(){
+  const prefs=alertPreferences();
+  document.querySelectorAll("#quickStartGames input").forEach(input=>input.checked=prefs.games.includes(input.value));
+  document.querySelectorAll("#quickStartStores input").forEach(input=>input.checked=prefs.stores.includes(input.value));
+  $("#quickStartMarkup").value=String(personalMarkup());
+  $("#quickStartEnableAlerts").checked=false;
+  $("#quickStartMessage").textContent="";
+  $("#quickStartDialog").showModal();
+}
 if(localStorage.getItem(WELCOME_GUIDE_KEY)) welcomeGuide.hidden=true;
-welcomeGuide.addEventListener("toggle",()=>{if(welcomeGuide.open) welcomeGuideOpened=true; else if(welcomeGuideOpened){localStorage.setItem(WELCOME_GUIDE_KEY,"1");welcomeGuide.hidden=true;}});
-$("#dismissGuide").addEventListener("click",()=>{localStorage.setItem(WELCOME_GUIDE_KEY,"1");welcomeGuide.hidden=true;});
+$("#startSetupBtn").addEventListener("click",openQuickStart);
+$("#dismissGuide").addEventListener("click",dismissWelcomeGuide);
+$("#closeQuickStartBtn").addEventListener("click",()=>$("#quickStartDialog").close());
+$("#skipQuickStartBtn").addEventListener("click",()=>{dismissWelcomeGuide();$("#quickStartDialog").close();});
+$("#quickStartForm").addEventListener("submit",async event=>{
+  event.preventDefault();
+  const games=[...document.querySelectorAll("#quickStartGames input:checked")].map(input=>input.value);
+  const stores=[...document.querySelectorAll("#quickStartStores input:checked")].map(input=>input.value);
+  const message=$("#quickStartMessage");
+  if(!games.length||!stores.length){message.textContent="Pick at least one game and retailer.";return;}
+  localStorage.setItem(ALERT_GAMES_KEY,JSON.stringify(games));
+  localStorage.setItem(ALERT_STORES_KEY,JSON.stringify(stores));
+  await savePersonalMarkup($("#quickStartMarkup").value);
+  if($("#quickStartEnableAlerts").checked){
+    message.textContent="Opening your phone's notification permission…";
+    try{await enablePush();}catch(error){message.textContent=error.message;return;}
+  }
+  dismissWelcomeGuide();
+  $("#quickStartDialog").close();
+  hydrateAlertChoices();
+  showToast("Radar setup saved.");
+});
 
 window.addEventListener("beforeinstallprompt",e=>{
   e.preventDefault(); deferredPrompt=e; $("#installBtn").hidden=false;
