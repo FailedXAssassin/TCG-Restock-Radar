@@ -343,12 +343,20 @@ function localScanHeaders(){
   const token=managerSecret()||googleToken;
   return {"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{})};
 }
-function localCooldownActive(){return Date.now()<localCooldownUntil;}
+function localManagerBypass(){return hasManagerAccess();}
+function localCooldownActive(){return !localManagerBypass()&&Date.now()<localCooldownUntil;}
 function startLocalCooldown(until=Date.now()+30000){
-  localCooldownUntil=until;
-  localStorage.setItem(LOCAL_COOLDOWN_KEY,String(localCooldownUntil));
   const button=$("#searchZipBtn");
   clearInterval(localCooldownTimer);
+  if(localManagerBypass()){
+    localCooldownUntil=0;
+    localStorage.removeItem(LOCAL_COOLDOWN_KEY);
+    button.disabled=false;
+    button.textContent="Scan this ZIP";
+    return;
+  }
+  localCooldownUntil=until;
+  localStorage.setItem(LOCAL_COOLDOWN_KEY,String(localCooldownUntil));
   const update=()=>{
     const seconds=Math.max(0,Math.ceil((localCooldownUntil-Date.now())/1000));
     button.disabled=seconds>0;
@@ -364,7 +372,8 @@ async function runLocalScan(){
   const zip=localSearch?.zip_code;
   if(!zip)return;
   if(localCooldownActive()){ $("#locationStatus").textContent=`Refresh available in ${Math.ceil((localCooldownUntil-Date.now())/1000)} seconds.`; return; }
-  startLocalCooldown();
+  if(!localManagerBypass()) startLocalCooldown();
+  else startLocalCooldown(0);
   const radius=Number($("#radiusFilter").value);
   status.textContent=`Finding supported stores within ${radius} miles of ZIP ${zip} and checking local inventory…`;
   $("#localResults").innerHTML='<div class="status card">Scanning nearby supported stores…</div>';
@@ -392,7 +401,12 @@ $("#searchZipBtn").addEventListener("click",()=>{
   runLocalScan();
 });
 $("#zipFilter").addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();$("#searchZipBtn").click();}});
-$("#radiusFilter").addEventListener("change",()=>{if(!localSearch)return;if(localCooldownActive()){$("#locationStatus").textContent=`Radius updated. Refresh available in \${Math.ceil((localCooldownUntil-Date.now())/1000)} seconds.`;return;}runLocalScan();});
+$("#radiusFilter").addEventListener("change",()=>{
+  const radius=Number($("#radiusFilter").value);
+  $("#locationStatus").textContent=localSearch?.zip_code
+    ? `Radius set to ${radius} miles. Tap Scan this ZIP to run the updated search.`
+    : `Radius set to ${radius} miles. Enter a ZIP code, then tap Scan this ZIP.`;
+});
 
 async function loadFeed(){
   $("#statusBox").textContent="Checking latest feed…";
