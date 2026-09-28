@@ -1843,6 +1843,9 @@ async def check_product(source):
             "set_name": source.get("set_name", ""),
             "catalog_key": source.get("catalog_key", ""),
             "product_type": source.get("product_type", "other_pack_product"),
+            "language": source.get("language", ""),
+            "condition": source.get("condition", ""),
+            "discovery_source": source.get("discovery_source", ""),
             "packs": source.get("packs"),
             **_stock_estimate_fields(source),
             "store": store,
@@ -2626,6 +2629,8 @@ async def admin_discovery(authorization: str = Header(default="")):
         "retailer": "Best Buy",
         "catalog_products": 0,
         "pending_verification": 0,
+        "review_required": 0,
+        "monitoring": 0,
         "runs": [],
     }
     if not database_enabled():
@@ -2637,6 +2642,10 @@ async def admin_discovery(authorization: str = Header(default="")):
             response["catalog_products"] = cursor.fetchone()[0]
             cursor.execute("SELECT COUNT(*) FROM radar_catalog_products WHERE payload->>'discovery_status' = 'pending_verification'")
             response["pending_verification"] = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM radar_catalog_products WHERE payload->>'discovery_status' = 'review_required'")
+            response["review_required"] = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM radar_catalog_products WHERE payload->>'discovery_status' = 'monitoring'")
+            response["monitoring"] = cursor.fetchone()[0]
             cursor.execute("SELECT payload FROM radar_discovery_runs WHERE retailer = %s ORDER BY created_at DESC LIMIT 20", ("Best Buy",))
             response["runs"] = [row[0] for row in cursor.fetchall()]
     response["storage"] = "postgres"
