@@ -165,9 +165,10 @@
       <div id="healthGrid" class="health-grid"></div>
     </section>
     <section id="collectionPage" data-page="collection" class="collection-page card" hidden>
-      <div class="eyebrow">MY COLLECTION</div><h2>Track what you actually paid</h2>
-      <p>Use your Google account so purchases stay with you when you change phones or reinstall TCG Radar.</p>
-      <button id="openPurchasePage" type="button">Open purchase tracker</button>
+      <div class="eyebrow">MY COLLECTION</div><h2>Collection & long-term tracking</h2>
+      <p>Keep purchases together and track older or hard-to-find sealed products without hammering retailer sites.</p>
+      <div class="collection-actions"><button id="openPurchasePage" type="button">Open purchase tracker</button><button id="openMarketTrackerBtn" type="button" class="secondary">Track an older item</button></div>
+      <section class="market-tracker-panel"><div class="alerts-title"><div><h3>Tracking items</h3><small>TCGplayer first • recent eBay sold fallback • reputable live listings</small></div></div><div id="marketTrackingList" class="market-tracking-list"><small>Sign in to add long-term tracking items.</small></div></section>
     </section>
   </main>
 
@@ -180,6 +181,8 @@
     <section class="settings-group"><h3>Support</h3><button id="helpBtn" type="button" class="settings-row"><span><strong>Help & message us</strong><small>Ask a question or report a problem</small></span><b>›</b></button></section>
     <p class="settings-note">TCG Radar respects retailers, keeps alerts conservative, and stays out of your way.</p>
   </aside>
+
+<dialog id="marketTrackerDialog" class="admin-dialog"><div class="dialog-card market-tracker-dialog"><div class="dialog-title"><div><div class="eyebrow">LONG-TERM RADAR</div><h2>Track an older item</h2></div><button id="closeMarketTrackerBtn" type="button" class="secondary">Close</button></div><p class="muted">For older or low-volume Pokémon, One Piece, Magic, and other TCG products. TCGplayer is the primary benchmark; recent eBay sold data is a fallback when TCGplayer has no recent sale.</p><form id="marketTrackerForm" class="product-form"><input id="marketTrackName" required maxlength="180" placeholder="Product name" /><div class="form-grid"><select id="marketTrackGame"><option>Pokemon</option><option>One Piece</option><option>Magic</option><option>Other</option></select><select id="marketTrackCadence"><option value="7">Check every 1 week</option><option value="14">Check every 2 weeks</option><option value="21">Check every 3 weeks</option><option value="30">Check every month</option></select></div><div class="form-grid"><select id="marketTrackTrigger"><option value="meaningful">Any meaningful deal</option><option value="10">10% below market</option><option value="15">15% below market</option><option value="20">20% below market</option><option value="custom_percent">Custom % below market</option><option value="custom_price">Custom target price</option></select><input id="marketTrackTarget" type="number" min="0" step="0.01" placeholder="Custom % or $ (optional)" /></div><input id="marketTrackTcgUrl" type="url" placeholder="TCGplayer product URL (optional)" /><input id="marketTrackEbayQuery" maxlength="180" placeholder="Exact eBay search phrase (optional)" /><button type="submit">Start tracking</button><p id="marketTrackerMessage" class="muted">Checks use exact product/version matching. eBay sold fallback is limited to recent sales (up to 60 days) and never becomes the TCGplayer Market Price.</p></form></div></dialog>
 
 <dialog id="reportDialog"><div class="dialog-card"><div class="dialog-title"><h2>Report a problem</h2><button id="closeReportBtn" type="button" class="secondary">Close</button></div><p class="muted">Thanks for helping keep TCG Radar honest. What is wrong with this listing?</p><div class="report-options"><button type="button" data-report="false_alert">False alert</button><button type="button" data-report="wrong_price">Wrong price</button><button type="button" data-report="broken_link">Broken link</button><button type="button" data-report="other" class="secondary">Something else</button></div><p id="reportMessage" class="muted"></p></div></dialog>
 
