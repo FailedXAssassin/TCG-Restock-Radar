@@ -293,6 +293,8 @@ def ensure_database():
             cursor.execute("ALTER TABLE radar_users ADD COLUMN IF NOT EXISTS nickname TEXT")
             cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS radar_users_nickname_unique ON radar_users (LOWER(nickname)) WHERE nickname IS NOT NULL")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_purchases (id TEXT PRIMARY KEY, google_sub TEXT NOT NULL, payload JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cursor.execute("CREATE TABLE IF NOT EXISTS radar_market_trackers (id TEXT PRIMARY KEY, google_sub TEXT NOT NULL, payload JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            cursor.execute("CREATE INDEX IF NOT EXISTS radar_market_trackers_user ON radar_market_trackers (google_sub, updated_at DESC)")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_visitors (client_id TEXT PRIMARY KEY, first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(), last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_retailer_link_clicks (retailer TEXT PRIMARY KEY, clicks BIGINT NOT NULL DEFAULT 0, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
             cursor.execute("CREATE TABLE IF NOT EXISTS radar_local_zip_searches (id TEXT PRIMARY KEY, client_id TEXT NOT NULL, searched_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
@@ -2532,6 +2534,60 @@ async def visitor_heartbeat(payload: dict):
 @app.get("/api/auth/me")
 async def auth_me(authorization: str = Header(default="")):
     return google_user(authorization)
+
+
+def _user_market_trackers(google_sub: str):
+    if not database_enabled():
+        return []
+    with _database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT payload FROM radar_market_trackers WHERE google_sub = %s ORDER BY updated_at DESC", (google_sub,))
+            return [row[0] for row in cursor.fetchall()]
+
+
+@app.get("/api/market-trackers")
+async def list_market_trackers(authorization: str = Header(default="")):
+    user = google_user(authorization)
+    return {"items": _user_market_trackers(user["google_sub"])}
+
+
+@app.post("/api/market-trackers", status_code=201)
+async def add_market_tracker(payload: dict, authorization: str = Header(default="")):
+    user = google_user(authorization)
+    name = str(payload.get("name", "")).strip()[:180]
+    game = str(payload.get("game", "Other")).strip()[:40]
+    cadence_days = int(payload.get("cadence_days", 7))
+    if not name or cadence_days not in {7, 14, 21, 30}:
+        raise HTTPException(status_code=422, detail="Product name and a supported check schedule are required")
+    trigger = str(payload.get("trigger", "meaningful")).strip()[:30]
+    target = safe_float(payload.get("target"))
+    tracker = {
+        "id": secrets.token_urlsafe(12), "name": name, "game": game,
+        "cadence_days": cadence_days, "trigger": trigger, "target": target,
+        "tcgplayer_url": str(payload.get("tcgplayer_url", "")).strip()[:500],
+        "ebay_query": str(payload.get("ebay_query", "")).strip()[:180],
+        "created_at": now_iso(), "last_checked_at": None, "next_check_at": now_iso(),
+        "market": {"tcg_market": None, "tcg_last_sold": None, "ebay_last_sold": None, "ebay_60d_median": None, "ebay_60d_sales": 0, "best_listing": None, "confidence": "pending", "summary": "Waiting for the first market-data check."}
+    }
+    if not database_enabled():
+        raise HTTPException(status_code=503, detail="Persistent tracking storage is not available")
+    with _database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("INSERT INTO radar_market_trackers (id, google_sub, payload) VALUES (%s, %s, %s::jsonb)", (tracker["id"], user["google_sub"], json.dumps(tracker)))
+        connection.commit()
+    return tracker
+
+
+@app.delete("/api/market-trackers/{tracker_id}")
+async def delete_market_tracker(tracker_id: str, authorization: str = Header(default="")):
+    user = google_user(authorization)
+    if not database_enabled():
+        raise HTTPException(status_code=503, detail="Persistent tracking storage is not available")
+    with _database_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM radar_market_trackers WHERE id = %s AND google_sub = %s", (tracker_id, user["google_sub"]))
+        connection.commit()
+    return {"deleted": True}
 
 
 @app.get("/api/purchases")
