@@ -18,6 +18,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from parsers import PARSER_VERSION, parse_target, parse_walmart
 from retailer_adapters import adapter_capabilities, adapter_for, bestbuy_product_id
+from discovery_rules import discovery_quality
 
 
 ROOT = Path(__file__).resolve().parent
@@ -437,9 +438,23 @@ async def _verify_and_begin_monitoring(candidate, adapter):
     if response.status_code != 200:
         raise RuntimeError(f"HTTP {response.status_code}")
     observation = adapter.check_inventory(response.text, product_url)
-    # A public listing alone is not enough. The seller must be explicitly
-    # identified as the retailer before it can enter the monitored source list.
-    if observation.first_party_seller is not True:
+    # Discovery is broad; promotion is deliberately strict. A candidate can
+    # stay in the catalog for review without ever reaching the fast monitor.
+    quality = discovery_quality(candidate, observation)
+    candidate.update({
+        "quality_eligible": quality["eligible"],
+        "quality_reasons": quality["reasons"],
+        "language": quality["language"],
+        "condition": quality["condition"],
+        "public_status": observation.status,
+        "public_price": observation.price,
+        "public_seller": observation.seller,
+        "shipping_available": observation.shipping_available,
+        "pickup_available": observation.pickup_available,
+        "verified_at": now_iso(),
+    })
+    if not quality["eligible"]:
+        candidate["discovery_status"] = "review_required"
         return None
     source = _clean_source({
         "product": candidate.get("title"),
@@ -449,17 +464,16 @@ async def _verify_and_begin_monitoring(candidate, adapter):
         "set_name": candidate.get("set_name", ""),
         "catalog_key": candidate.get("canonical_key", ""),
         "product_type": candidate.get("product_type", "other_pack_product"),
+        "language": quality["language"],
+        "condition": quality["condition"],
+        "discovery_source": candidate.get("discovery_source", "public_discovery"),
         "priority": "normal",
         "area": "Online",
         "published": True,
     })
     candidate.update({
         "discovery_status": "monitoring",
-        "public_status": observation.status,
-        "public_price": observation.price,
-        "public_seller": observation.seller,
         "first_party_seller": True,
-        "verified_at": now_iso(),
     })
     return source
 
