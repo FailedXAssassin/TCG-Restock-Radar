@@ -272,7 +272,7 @@
         <input id="managerCode" type="password" inputmode="numeric" autocomplete="one-time-code" minlength="4" maxlength="20" pattern="[0-9]{4,20}" placeholder="4–20 digit PIN" />
         <div class="dialog-actions"><button id="unlockManager" type="button">Unlock manager controls</button><button id="cancelManager" type="button" class="secondary">Cancel</button></div>
       </div>
-      <details class="admin-section" id="productAdminSection" open>
+      <details class="admin-section" id="productAdminSection">
         <summary><span>▣ Add a tracked product<small>Public retailer links only</small></span><span>⌄</span></summary>
       <form id="productForm" class="product-form">
         <input id="ownerProduct" required placeholder="Product name" />
@@ -292,7 +292,7 @@
       </div>
       </details>
       <section id="ownerOnlyControls" hidden>
-        <details class="admin-section" open>
+        <details class="admin-section">
           <summary><span>⚙ Maintenance<small>Safe owner-only maintenance actions</small></span><span>⌄</span></summary>
           <div class="owner-actions"><button id="refreshImagesBtn" type="button" class="secondary">Refresh missing images</button><button id="restartServerBtn" type="button" class="danger-button">Restart server</button></div>
           <p id="maintenanceMessage" class="muted">Images come from official retailer pages, with Pokémon Center used only as a Pokémon product-art fallback. Refresh checks up to 25 missing items at a time.</p>
@@ -384,7 +384,7 @@
         </details>
       </section>
       <p id="ownerMessage" class="muted"></p>
-      <details class="admin-section" open><summary><span>⌘ Tracked products<small>Pause, resume, or remove links</small></span><span>⌄</span></summary><div class="owner-list-controls">
+      <details class="admin-section"><summary><span>⌘ Tracked products<small>Pause, resume, or remove links</small></span><span>⌄</span></summary><div class="owner-list-controls">
           <input id="ownerProductSearch" type="search" placeholder="Search tracked products or retailers" autocomplete="off" />
           <select id="ownerProductSort" aria-label="Sort tracked products">
             <option value="newest" selected>Newest</option>
