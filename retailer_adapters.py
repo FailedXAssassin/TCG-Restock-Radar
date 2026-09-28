@@ -56,6 +56,8 @@ SET_RULES = (
     ("White Flare", r"white flare"),
     ("Destined Rivals", r"destined rivals"),
     ("Chaos Rising", r"chaos rising"),
+    ("OP-17: The World's Strongest Warriors", r"\bop[- ]?17\b|world['’]?s strongest warriors"),
+    ("The Hobbit", r"\bthe hobbit\b|tales of middle[- ]earth"),
 )
 
 
@@ -104,7 +106,11 @@ def classify_title(title: str) -> tuple[str, str]:
 
 def classify_set(title: str) -> str:
     value = unescape(title or "").lower()
-    return next((name for name, pattern in SET_RULES if re.search(pattern, value, re.I)), "")
+    known = next((name for name, pattern in SET_RULES if re.search(pattern, value, re.I)), "")
+    if known:
+        return known
+    one_piece_code = re.search(r"\bop[- ]?(\d{1,2})\b", value, re.I)
+    return f"OP-{one_piece_code.group(1).zfill(2)}" if one_piece_code else ""
 
 
 def walmart_product_id(url: str) -> str | None:
@@ -230,6 +236,7 @@ class BestBuyAdapter(RetailerAdapter):
                 title=title,
                 product_url=url.split("?")[0],
                 tcg=game,
+                set_name=classify_set(title),
                 product_type=product_type,
                 discovery_source="best_buy_public_search",
             ))
